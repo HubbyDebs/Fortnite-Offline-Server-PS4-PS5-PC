@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fortnite Offline Server</title>
+<link rel="icon" href="/icon.png">
+<style>
+:root {
+  --bg: #0b0d14;
+  --card: rgba(22, 26, 39, .78);
+  --card-solid: #161a27;
+  --line: rgba(255, 255, 255, .07);
+  --line2: rgba(255, 255, 255, .12);
+  --txt: #eef1f8;
+  --txt2: #9aa3b8;
+  --txt3: #646d82;
+  --a1: #7b5cff;
+  --a2: #2fb8ff;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --err: #fb7185;
+  --idle: #4b5368;
+  --r: 16px;
+  --head: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --body: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", "Consolas", monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; color: var(--txt); font: 14px/1.45 var(--body); background: var(--bg);
+  overflow: hidden; user-select: none; -webkit-font-smoothing: antialiased;
+}
+/* backdrop */
+.backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; background:
+  radial-gradient(1200px 600px at 85% -10%, rgba(123, 92, 255, .22), transparent 60%),
+  radial-gradient(900px 500px at -10% 110%, rgba(47, 184, 255, .16), transparent 60%), var(--bg); }
+.backdrop::after { content: ""; position: absolute; inset: 0; opacity: .35;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 44px 44px; mask-image: radial-gradient(ellipse at 50% 0%, #000 20%, transparent 75%); }
+
+.app { height: 100%; display: grid; grid-template-rows: auto 1fr; padding: 22px 26px 22px; gap: 20px; }
+
+/* header */
+header { display: flex; align-items: center; gap: 16px; }
+.logo { width: 48px; height: 48px; flex: none; filter: drop-shadow(0 8px 20px rgba(123, 92, 255, .45)); }
+.heading h1 { margin: 0; font: 600 22px/1.1 var(--head); letter-spacing: .02em; text-transform: uppercase; }
+.heading p { margin: 3px 0 0; color: var(--txt2); font-size: 12.5px; letter-spacing: .03em; }
+.heading p b { color: var(--txt); font-weight: 600; }
+.spacer { flex: 1; }
+.pill { display: flex; align-items: center; gap: 9px; padding: 8px 14px 8px 12px; border-radius: 999px;
+  background: var(--card); border: 1px solid var(--line); font: 600 12.5px var(--head); letter-spacing: .06em; text-transform: uppercase; color: var(--txt2); }
+.pill .clock { font-family: var(--mono); font-weight: 500; letter-spacing: 0; color: var(--txt); }
+
+/* main grid */
+main { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 20px; min-height: 0; }
+.col { display: flex; flex-direction: column; gap: 20px; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.col > .card { flex: none; }
+.col > .log { flex: 1 1 auto; min-height: 150px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 18px 20px;
+  backdrop-filter: blur(14px); box-shadow: 0 20px 50px -30px rgba(0, 0, 0, .8); }
+.card h2 { margin: 0 0 14px; display: flex; align-items: center; gap: 10px; font: 600 12px var(--head);
+  letter-spacing: .14em; text-transform: uppercase; color: var(--txt2); }
+.card h2 .extra { margin-left: auto; letter-spacing: .02em; text-transform: none; font: 500 12px var(--body); color: var(--txt3); }
+
+/* power card */
+.power { position: relative; overflow: hidden; padding: 20px 20px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; flex: none; }
+.power::before { content: ""; position: absolute; inset: -40% -20% auto; height: 260px; opacity: 0; transition: opacity .6s;
+  background: radial-gradient(closest-side, rgba(52, 211, 153, .28), transparent); }
+.power.on::before { opacity: 1; }
+/* The button is built in layers, each with its own transition: colour (::before), loading ring (svg) and pulse. */
+.power-wrap { position: relative; flex: none; width: 132px; height: 132px; display: grid; place-items: center; }
+.power-button { position: relative; z-index: 1; width: 108px; height: 108px; border-radius: 50%; border: 0; cursor: pointer; display: grid; place-items: center;
+  color: #fff; overflow: hidden; background: linear-gradient(145deg, var(--a1), var(--a2)); transition: box-shadow .5s ease, filter .2s;
+  box-shadow: 0 18px 50px -14px rgba(123, 92, 255, .8), inset 0 2px 0 rgba(255, 255, 255, .22); }
+.power-button::before { content: ""; position: absolute; inset: 0; border-radius: 50%; opacity: 0; transition: opacity .5s ease;
+  background: linear-gradient(145deg, #1f9e74, var(--ok)); }
+.power-button:hover { filter: brightness(1.08); }
+.power-button:active { filter: brightness(.95); }
+.power-button svg { position: relative; width: 38px; height: 38px; }
+.power.on .power-button { box-shadow: 0 18px 50px -14px rgba(52, 211, 153, .75), inset 0 2px 0 rgba(255, 255, 255, .22); }
+.power.on .power-button::before { opacity: 1; }
+.ring { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity .3s; pointer-events: none; }
+.ring circle { fill: none; stroke-width: 3; stroke-linecap: round; }
+.ring .track { stroke: rgba(255, 255, 255, .08); }
+.ring .arc { stroke: url(#ringGradient); stroke-dasharray: 110 400; transform-origin: 78px 78px; animation: spin 1.1s linear infinite; }
+.power.busy .ring { opacity: 1; }
+.pulse { position: absolute; inset: 12px; border-radius: 50%; border: 2px solid rgba(52, 211, 153, .5); opacity: 0; pointer-events: none; }
+.power.on:not(.busy) .pulse { animation: wave 2.4s ease-out infinite; }
+.power.on:not(.busy) .pulse.b { animation-delay: 1.2s; }
+@keyframes wave { 0% { opacity: .7; transform: scale(1); } 100% { opacity: 0; transform: scale(1.22); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+.power .info { flex: 1; min-width: 0; position: relative; }
+.power .big-state { font: 600 22px/1.1 var(--head); letter-spacing: .04em; text-transform: uppercase; }
+.power .sub { margin-top: 5px; color: var(--txt2); font-size: 13px; min-height: 19px; }
+.power .uptime { margin-top: 10px; display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 8px; background: rgba(255, 255, 255, .05); color: var(--txt2); font: 500 12px var(--mono); visibility: hidden; }
+.power.on .uptime { visibility: visible; }
+.power .uptime svg { width: 13px; height: 13px; }
+.power .actions { flex-basis: 100%; margin-top: 12px; }
+.actions { display: flex; gap: 8px; margin-top: 18px; width: 100%; }
+.btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 14px;
+  border-radius: 10px; border: 1px solid var(--line2); background: rgba(255, 255, 255, .04); color: var(--txt);
+  font: 600 12.5px var(--body); cursor: pointer; transition: background .15s, border-color .15s, opacity .15s; }
+.btn:hover { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .2); }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn svg { width: 15px; height: 15px; opacity: .85; }
+
+/* status */
+.statuses { display: grid; gap: 10px; }
+.status { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px;
+  background: rgba(255, 255, 255, .025); border: 1px solid var(--line); transition: border-color .3s; }
+.status .icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: rgba(255, 255, 255, .05); color: var(--txt2); }
+.status .icon svg { width: 19px; height: 19px; }
+.status .name { font-weight: 600; font-size: 13.5px; }
+.status .value { color: var(--txt2); font-size: 12.5px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.led { width: 10px; height: 10px; border-radius: 50%; background: var(--idle); position: relative; }
+.led::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; background: inherit; opacity: 0; }
+.ok .led { background: var(--ok); box-shadow: 0 0 12px var(--ok); }
+.ok .led::after { animation: beat 2s ease-out infinite; }
+.warn .led, .starting .led { background: var(--warn); box-shadow: 0 0 10px rgba(251, 191, 36, .6); }
+.error .led, .missing .led { background: var(--err); box-shadow: 0 0 10px rgba(251, 113, 133, .6); }
+.ok .icon { color: var(--ok); background: rgba(52, 211, 153, .1); }
+.error .icon, .missing .icon { color: var(--err); background: rgba(251, 113, 133, .1); }
+.warn .icon, .starting .icon { color: var(--warn); background: rgba(251, 191, 36, .1); }
+@keyframes beat { from { opacity: .5; transform: scale(.6); } to { opacity: 0; transform: scale(2); } }
+
+/* right column */
+.row2 { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; }
+
+/* bots */
+.presets { display: flex; gap: 6px; margin-bottom: 16px; }
+.preset { flex: 1; height: 32px; border-radius: 9px; border: 1px solid var(--line2); background: transparent; color: var(--txt2);
+  font: 600 12px var(--body); cursor: pointer; transition: all .15s; }
+.preset:hover { color: var(--txt); border-color: rgba(255, 255, 255, .22); }
+.preset.active { color: #fff; border-color: transparent; background: linear-gradient(135deg, rgba(123, 92, 255, .55), rgba(47, 184, 255, .45)); }
+.control { margin-bottom: 16px; }
+.control:last-child { margin-bottom: 0; }
+.control .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.control .top span { color: var(--txt2); font-size: 13px; }
+.control .top b { font: 600 20px var(--head); letter-spacing: .02em; }
+.control .top b small { font-size: 12px; color: var(--txt3); font-weight: 500; margin-left: 2px; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 99px; outline: none; cursor: pointer;
+  background: linear-gradient(90deg, var(--a1), var(--a2)) 0 / var(--p, 50%) 100% no-repeat, rgba(255, 255, 255, .08); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 0 4px rgba(123, 92, 255, .35), 0 4px 10px rgba(0, 0, 0, .4); transition: box-shadow .15s; }
+input[type=range]:hover::-webkit-slider-thumb { box-shadow: 0 0 0 6px rgba(123, 92, 255, .35), 0 4px 10px rgba(0, 0, 0, .4); }
+.notice { margin-top: 14px; padding: 9px 12px; border-radius: 10px; font-size: 12.5px; color: var(--warn);
+  background: rgba(251, 191, 36, .08); border: 1px solid rgba(251, 191, 36, .2); display: none; align-items: center; gap: 10px; }
+.notice.visible { display: flex; }
+.notice button { margin-left: auto; height: 28px; padding: 0 12px; border-radius: 8px; border: 0; background: var(--warn); color: #1d1606; font: 700 12px var(--body); cursor: pointer; }
+
+/* accounts */
+.mode { display: flex; gap: 12px; padding: 12px; border-radius: 12px; background: rgba(255, 255, 255, .025); border: 1px solid var(--line); margin-bottom: 10px; }
+.mode .icon { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; flex: none; }
+.mode .icon svg { width: 18px; height: 18px; }
+.mode.progress .icon { background: rgba(47, 184, 255, .12); color: var(--a2); }
+.mode.all .icon { background: rgba(251, 191, 36, .12); color: var(--warn); }
+.mode .name { font-weight: 600; font-size: 13.5px; }
+.mode .desc { color: var(--txt2); font-size: 12.5px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 11px; border-radius: 8px;
+  background: rgba(251, 191, 36, .12); border: 1px solid rgba(251, 191, 36, .25); color: #fde68a; font: 600 12.5px var(--mono); }
+.chip button { width: 18px; height: 18px; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; display: grid; place-items: center; opacity: .7; }
+.chip button:hover { opacity: 1; background: rgba(255, 255, 255, .1); }
+.chips input { flex: 1; min-width: 110px; height: 28px; border-radius: 8px; border: 1px dashed var(--line2); background: transparent; color: var(--txt);
+  padding: 0 10px; font: 12.5px var(--mono); outline: none; user-select: text; }
+.chips input:focus { border-style: solid; border-color: rgba(251, 191, 36, .5); }
+.help { margin-top: 12px; color: var(--txt3); font-size: 12px; }
+.help code { font-family: var(--mono); color: var(--txt2); background: rgba(255, 255, 255, .05); padding: 1px 6px; border-radius: 5px; }
+
+/* LAN */
+.lan { display: grid; grid-template-columns: 170px repeat(3, minmax(0, 1fr)); gap: 14px; align-items: stretch; padding: 16px 20px; }
+.lan .top { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding-right: 6px; }
+.lan .top h2 { margin: 0; }
+.lan .top .switch { font-size: 13px; color: var(--txt2); }
+.lan .way { padding: 10px 12px; border-radius: 12px; background: rgba(255, 255, 255, .025); border: 1px solid var(--line); transition: opacity .3s; }
+.lan .way .name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+.lan .way .name svg { width: 15px; height: 15px; color: var(--a2); }
+.lan .way .desc { color: var(--txt2); font-size: 12px; margin-top: 3px; }
+.lan .way code { font-family: var(--mono); color: var(--txt); background: rgba(255, 255, 255, .06); padding: 1px 6px; border-radius: 5px; user-select: text; }
+.lan.off .way.pc { opacity: .4; }
+
+/* log */
+.log { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-bottom: 12px; }
+.log .tools { display: flex; gap: 6px; margin-left: auto; }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--txt3); font: 500 12px var(--body); letter-spacing: 0; text-transform: none; }
+.switch input { display: none; }
+.switch i { width: 30px; height: 17px; border-radius: 99px; background: rgba(255, 255, 255, .1); position: relative; transition: background .2s; }
+.switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.switch input:checked + i { background: var(--a1); }
+.switch input:checked + i::after { transform: translateX(13px); }
+.mini { height: 26px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line2); background: transparent; color: var(--txt3); font: 500 12px var(--body); cursor: pointer; }
+.mini:hover { color: var(--txt); }
+.lines { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -8px; padding: 0 8px; font: 12.5px/1.5 var(--mono); user-select: text; }
+.lines::-webkit-scrollbar { width: 8px; }
+.lines::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .1); border-radius: 9px; }
+.ln { display: grid; grid-template-columns: 64px 8px 1fr; gap: 10px; align-items: baseline; padding: 4px 8px; border-radius: 7px; animation: enter .25s ease-out; }
+.ln:hover { background: rgba(255, 255, 255, .03); }
+.ln .t { color: var(--txt3); }
+.ln .p { width: 6px; height: 6px; border-radius: 50%; background: var(--txt3); align-self: center; }
+.ln.ok .p { background: var(--ok); } .ln.warn .p { background: var(--warn); } .ln.error .p { background: var(--err); }
+.ln.error .m { color: #fecdd3; }
+.ln.tech { opacity: .55; font-size: 11.5px; }
+.empty { color: var(--txt3); text-align: center; padding: 30px 0; font-family: var(--body); }
+@keyframes enter { from { opacity: 0; transform: translateY(4px); } }
+
+/* app closed */
+.curtain { position: fixed; inset: 0; z-index: 20; display: none; place-items: center; background: rgba(8, 10, 16, .86); backdrop-filter: blur(6px); }
+.curtain.visible { display: grid; }
+.curtain div { text-align: center; }
+.curtain b { display: block; font: 600 20px var(--head); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
+.curtain span { color: var(--txt2); }
+
+/* toasts */
+.toasts { position: fixed; right: 24px; bottom: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+.toast { padding: 11px 16px; border-radius: 11px; background: var(--card-solid); border: 1px solid var(--line2); box-shadow: 0 14px 40px -10px rgba(0, 0, 0, .7);
+  font-size: 13px; animation: enter .25s ease-out; max-width: 360px; }
+.toast.error { border-color: rgba(251, 113, 133, .4); }
+
+@media (max-width: 1020px) { main { grid-template-columns: 1fr; overflow-y: auto; } body { overflow: auto; } .row2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="backdrop"></div>
+<div class="app">
+  <header>
+    <img class="logo" src="/icon.png" alt="">
+    <div class="heading">
+      <h1>Fortnite Offline Server</h1>
+      <p><b>PS4 · PC</b> · Season 7 · v7.40 · bots by CoreV2</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill" id="pill"><span class="led" style="width:8px;height:8px"></span><span id="pillText">Stopped</span><span class="clock" id="clock"></span></div>
+  </header>
+
+  <main>
+    <div class="col">
+      <section class="card power" id="power">
+        <div class="power-wrap">
+          <span class="pulse"></span><span class="pulse b"></span>
+          <svg class="ring" viewBox="0 0 156 156">
+            <defs><linearGradient id="ringGradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#2fb8ff"/></linearGradient></defs>
+            <circle class="track" cx="78" cy="78" r="74"/><circle class="arc" cx="78" cy="78" r="74"/>
+          </svg>
+          <button class="power-button" id="powerButton" title="Start / stop">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1 0 11.4 0"/></svg>
+          </button>
+        </div>
+        <div class="info">
+          <div class="big-state" id="bigState">Stopped</div>
+          <div class="sub" id="stateSub">Press to start the server</div>
+          <div class="uptime"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span id="uptime">0:00</span></div>
+        </div>
+        <div class="actions">
+          <button class="btn" id="btnRestart" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Restart</button>
+          <button class="btn" id="btnPanel" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>Admin panel</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Status</h2>
+        <div class="statuses">
+          <div class="status" id="s-backend"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></div><div><div class="name">Sign-in &amp; lobby</div><div class="value">—</div></div><span class="led"></span></div>
+          <div class="status" id="s-ps4"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-3.9 3.2L2 13.5A3 3 0 0 0 5 17c1 0 1.9-.6 2.4-1.5L8.5 14h7l1.1 1.5A2.9 2.9 0 0 0 19 17a3 3 0 0 0 3-3.5l-.8-5.3A4 4 0 0 0 17.3 5z"/></svg></div><div><div class="name">PS4</div><div class="value">Searching…</div></div><span class="led"></span></div>
+          <div class="status" id="s-plugin"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v4"/></svg></div><div><div class="name">PS4 plugin</div><div class="value">Not checked</div></div><span class="led"></span></div>
+          <div class="status" id="s-match"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6 6 .9-4.5 4.3 1 6.3L12 16.5 6.5 19.5l1-6.3L3 8.9 9 8z"/></svg></div><div><div class="name">Match server</div><div class="value">—</div></div><span class="led"></span></div>
+        </div>
+        <div class="actions">
+          <button class="btn" id="btnPrepare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>Prepare PS4</button>
+          <button class="btn" id="btnFolder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Folder</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <div class="row2">
+        <section class="card">
+          <h2>Bots <span class="extra" id="totalPlayers">51 players</span></h2>
+          <div class="presets">
+            <button class="preset" data-p="chill">Chill</button>
+            <button class="preset" data-p="normal">Normal</button>
+            <button class="preset" data-p="sweaty">Sweaty</button>
+            <button class="preset" data-p="chaos">Chaos</button>
+          </div>
+          <div class="control"><div class="top"><span>Count</span><b id="vCount">50</b></div><input type="range" id="count" min="0" max="99"></div>
+          <div class="control"><div class="top"><span>Difficulty</span><b id="vLevel">5<small>/10</small></b></div><input type="range" id="level" min="1" max="10"></div>
+          <div class="control"><div class="top"><span>Bots fighting each other</span><b id="vFights">30<small>%</small></b></div><input type="range" id="fights" min="0" max="100"></div>
+          <div class="notice" id="notice"><span>Saved · applies after a restart</span><button id="apply">Restart now</button></div>
+        </section>
+
+        <section class="card">
+          <h2>Accounts</h2>
+          <div class="mode progress">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></div>
+            <div><div class="name">Progression</div><div class="desc">Any account: start from zero and level up the Battle Pass by playing.</div></div>
+          </div>
+          <div class="mode all">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18M9 3l3 6 3-6M12 21L9 9M12 21l3-12"/></svg></div>
+            <div style="flex:1;min-width:0"><div class="name">Everything unlocked</div><div class="desc">Every cosmetic and the Battle Pass at 100%.</div>
+              <div class="chips" id="chips"><input id="newAccount" placeholder="+ add account" maxlength="16" spellcheck="false"></div>
+            </div>
+          </div>
+          <div class="help">Sign in with <code>name@core.com</code> and any password.</div>
+        </section>
+      </div>
+
+      <section class="card lan" id="lanCard">
+        <div class="top">
+          <h2>LAN multiplayer</h2>
+          <label class="switch"><input type="checkbox" id="lanOn"><i></i><span id="lanText">PS4 only</span></label>
+        </div>
+        <div class="way">
+          <div class="name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><rect x="2" y="5" width="20" height="12" rx="5"/></svg>Another PS4</div>
+          <div class="desc">With GoldHEN: press <b>Prepare PS4</b>.</div>
+        </div>
+        <div class="way pc">
+          <div class="name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>A PC</div>
+          <div class="desc">Core Launcher → <code id="lanIp">—</code></div>
+        </div>
+        <div class="way pc">
+          <div class="name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 19a6 6 0 0 1 12 0M14 19a4 4 0 0 1 7 0"/></svg>Together</div>
+          <div class="desc">Invite each other to a party in the lobby.</div>
+        </div>
+      </section>
+
+      <section class="card log">
+        <h2>Log
+          <span class="tools">
+            <label class="switch"><input type="checkbox" id="details"><i></i>Details</label>
+            <button class="mini" id="clear">Clear</button>
+          </span>
+        </h2>
+        <div class="lines" id="lines"></div>
+      </section>
+    </div>
+  </main>
+</div>
+<div class="toasts" id="toasts"></div>
+<div class="curtain" id="curtain"><div><b>The app has closed</b><span>Close this window and open Fortnite Offline Server again.</span></div></div>
+
+<script>
+const TOKEN = location.hash.slice(1);
+const $ = (id) => document.getElementById(id);
+let lastId = 0, running = false, busy = false, firstTime = true, logs = [], failures = 0;
+let settings = { bots: { count: 50, level: 5, fight_chance: 30 }, unlock_all: [], lan: false };
+let backendState = "stopped";
+
+async function api(route, body) {
+  const r = await fetch(route, { method: body === undefined ? "GET" : "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "Error " + r.status);
+  return j;
+}
+function toast(text, error) {
+  const t = document.createElement("div");
+  t.className = "toast" + (error ? " error" : "");
+  t.textContent = text;
+  $("toasts").append(t);
+  setTimeout(() => t.remove(), 3800);
+}
+function needsRestart() { if (running) $("notice").classList.add("visible"); }
+
+/* ---------- bots ---------- */
+const PRESETS = {
+  chill: { count: 30, level: 2, fight_chance: 15 },
+  normal: { count: 50, level: 5, fight_chance: 30 },
+  sweaty: { count: 70, level: 9, fight_chance: 45 },
+  chaos: { count: 99, level: 7, fight_chance: 80 },
+};
+function drawBots() {
+  const b = settings.bots;
+  for (const [id, key] of [["count", "count"], ["level", "level"], ["fights", "fight_chance"]]) {
+    const el = $(id);
+    el.value = b[key];
+    el.style.setProperty("--p", ((b[key] - el.min) / (el.max - el.min) * 100) + "%");
+  }
+  $("vCount").textContent = b.count;
+  $("vLevel").innerHTML = b.level + "<small>/10</small>";
+  $("vFights").innerHTML = b.fight_chance + "<small>%</small>";
+  $("totalPlayers").textContent = (b.count + 1) + " players";
+  document.querySelectorAll(".preset").forEach((p) => {
+    const v = PRESETS[p.dataset.p];
+    p.classList.toggle("active", v.count === b.count && v.level === b.level && v.fight_chance === b.fight_chance);
+  });
+}
+let saveTimer;
+function changeBots(changes) {
+  settings.bots = { ...settings.bots, ...changes };
+  drawBots();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try { await api("/api/settings", { bots: settings.bots }); } catch (e) { toast(e.message, true); }
+    needsRestart();
+  }, 350);
+}
+$("count").oninput = (e) => changeBots({ count: +e.target.value });
+$("level").oninput = (e) => changeBots({ level: +e.target.value });
+$("fights").oninput = (e) => changeBots({ fight_chance: +e.target.value });
+document.querySelectorAll(".preset").forEach((p) => p.onclick = () => changeBots(PRESETS[p.dataset.p]));
+
+/* ---------- accounts ---------- */
+function drawAccounts() {
+  const chips = $("chips");
+  chips.querySelectorAll(".chip").forEach((c) => c.remove());
+  for (const name of settings.unlock_all) {
+    const c = document.createElement("span");
+    c.className = "chip";
+    c.textContent = name;
+    const x = document.createElement("button");
+    x.title = "Remove";
+    x.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 2l6 6M8 2L2 8"/></svg>';
+    x.onclick = () => saveAccounts(settings.unlock_all.filter((n) => n !== name));
+    c.append(x);
+    chips.insertBefore(c, $("newAccount"));
+  }
+}
+async function saveAccounts(list) {
+  settings.unlock_all = list;
+  drawAccounts();
+  try { await api("/api/settings", { unlock_all: list }); } catch (e) { toast(e.message, true); }
+  needsRestart();
+}
+$("newAccount").onkeydown = (e) => {
+  if (e.key !== "Enter" && e.key !== ",") return;
+  e.preventDefault();
+  const n = e.target.value.trim();
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(n)) return toast("Names are 3 to 16 letters, digits or _", true);
+  if (!settings.unlock_all.some((x) => x.toLowerCase() === n.toLowerCase())) saveAccounts([...settings.unlock_all, n]);
+  e.target.value = "";
+};
+
+/* ---------- LAN ---------- */
+function drawLan() {
+  $("lanOn").checked = !!settings.lan;
+  $("lanText").textContent = settings.lan ? "Open to the local network" : "PS4 only";
+  $("lanCard").classList.toggle("off", !settings.lan);
+}
+$("lanOn").onchange = async (e) => {
+  settings.lan = e.target.checked;
+  drawLan();
+  try { await api("/api/settings", { lan: settings.lan }); } catch (err) { toast(err.message, true); }
+  needsRestart();
+};
+
+/* ---------- actions ---------- */
+$("powerButton").onclick = async () => {
+  if (busy || backendState === "starting") return;
+  busy = true; drawPower();
+  try {
+    if (running) await api("/api/stop", {});
+    else await api("/api/start", { bots: settings.bots, unlock_all: settings.unlock_all });
+  } catch (e) { toast(e.message, true); }
+  $("notice").classList.remove("visible");
+};
+const restart = async () => {
+  busy = true; drawPower();
+  try { await api("/api/restart", { bots: settings.bots, unlock_all: settings.unlock_all }); toast("Restarting with the new settings"); }
+  catch (e) { toast(e.message, true); }
+  $("notice").classList.remove("visible");
+};
+$("btnRestart").onclick = restart;
+$("apply").onclick = restart;
+$("btnPanel").onclick = () => api("/api/open", { what: "panel" }).catch((e) => toast(e.message, true));
+$("btnFolder").onclick = () => api("/api/open", { what: "folder" }).catch((e) => toast(e.message, true));
+$("btnPrepare").onclick = async () => {
+  try { await api("/api/prepare", {}); toast("Preparing the PS4…"); } catch (e) { toast(e.message, true); }
+};
+$("details").onchange = () => drawLogs(true);
+$("clear").onclick = () => { logs = []; drawLogs(true); };
+
+/* ---------- drawing ---------- */
+function drawPower() {
+  const p = $("power");
+  const starting = backendState === "starting";
+  p.classList.toggle("on", running && !starting);
+  p.classList.toggle("busy", busy || starting);
+}
+function status(id, kind, text) {
+  const el = $(id);
+  el.className = "status " + kind;
+  el.querySelector(".value").textContent = text;
+}
+function hms(s) {
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60;
+  return (h ? h + ":" : "") + String(m).padStart(h ? 2 : 1, "0") + ":" + String(x).padStart(2, "0");
+}
+function lineEl(l) {
+  const d = document.createElement("div");
+  d.className = "ln " + l.kind;
+  d.innerHTML = '<span class="t"></span><span class="p"></span><span class="m"></span>';
+  d.children[0].textContent = l.t; d.children[2].textContent = l.text;
+  return d;
+}
+function drawLogs(all) {
+  const box = $("lines"), details = $("details").checked;
+  if (all) box.replaceChildren(...logs.filter((l) => details || l.kind !== "tech").map(lineEl));
+  if (!box.children.length) box.innerHTML = '<div class="empty">Everything that happens shows up here: PS4 connections, matches, errors…</div>';
+  box.scrollTop = box.scrollHeight;
+}
+function addLogs(added) {
+  if (!added.length) return;
+  logs.push(...added);
+  if (logs.length > 800) logs = logs.slice(-800);
+  const box = $("lines"), details = $("details").checked;
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.querySelector(".empty")?.remove();
+  for (const l of added) if (details || l.kind !== "tech") box.append(lineEl(l));
+  while (box.children.length > 600) box.firstChild.remove();
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+async function refresh() {
+  try {
+    const e = await api("/api/state?since=" + lastId);
+    if (e.logs.length) lastId = e.logs[e.logs.length - 1].id;
+    addLogs(e.logs);
+    if (firstTime) {
+      settings = { ...settings, ...e.settings };
+      drawBots(); drawAccounts(); drawLan(); drawLogs(true);
+      firstTime = false;
+    }
+    if (running !== e.running || backendState !== e.backend[0]) busy = false;
+    running = e.running;
+    backendState = e.backend[0];
+    drawPower();
+
+    const [be, beText] = e.backend;
+    const titles = { ok: "Running", starting: "Starting", error: "Error", stopped: "Stopped" };
+    $("bigState").textContent = titles[be] || be;
+    $("stateSub").textContent = be === "ok"
+      ? (e.signins ? `${e.signins} PS4 sign-in${e.signins === 1 ? "" : "s"}` : "Waiting for the PS4…")
+      : be === "stopped" ? "Press to start the server" : beText;
+    status("s-backend", be === "stopped" ? "" : be, beText);
+
+    $("pill").className = "pill " + (be === "stopped" ? "" : be);
+    $("pillText").textContent = titles[be] || be;
+    $("clock").textContent = e.uptime ? hms(e.uptime) : "";
+    $("uptime").textContent = "Up " + hms(e.uptime);
+
+    if (e.ps4) status("s-ps4", e.ps4.awake ? "ok" : "warn", `${e.ps4.name} · ${e.ps4.ip}${e.ps4.awake ? "" : " · rest mode"}`);
+    else status("s-ps4", "error", "Not found on the network");
+
+    const [pl, plText] = e.plugin;
+    status("s-plugin", pl === "pending" ? "" : pl, plText + (e.game === false ? " · Fortnite not installed" : ""));
+    if (e.game === false && pl === "ok") $("s-plugin").className = "status warn";
+
+    status("s-match", e.match[0], e.match[1]);
+    $("lanIp").textContent = e.pc_ip ? `${e.pc_ip}:${e.settings.port}` : "—";
+    $("btnRestart").disabled = !running;
+    $("btnPanel").disabled = be !== "ok";
+    failures = 0;
+    $("curtain").classList.remove("visible");
+  } catch (err) {
+    status("s-backend", "error", "The app is not responding");
+    if (++failures >= 4) $("curtain").classList.add("visible");
+  }
+}
+refresh();
+setInterval(refresh, 700);
+</script>
+</body>
+</html>

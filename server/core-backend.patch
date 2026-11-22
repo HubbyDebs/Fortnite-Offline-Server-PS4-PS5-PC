@@ -1,0 +1,65 @@
+diff --git a/src/admin/routes.js b/src/admin/routes.js
+index 43aa150..2b3e2af 100644
+--- a/src/admin/routes.js
++++ b/src/admin/routes.js
+@@ -71,7 +71,8 @@ import { calendarCacheMinutes } from "../services/fortnite/calendar.js";
+ import { defaultBattlePass, enrichedMilestones } from "../battlepass/season1.js";
+ import { bundleTiers, seasonPassConfig, seasonTiers, tierPrice } from "../battlepass/season2.js";
+ import { battlePassSeasons, resetBattlePass } from "../battlepass/reset.js";
+-import { buildOfSeason, givenVariantTokens, inProfileSeason, profileSeason } from "../profiles/seasons.js";
++import { buildOfSeason, buyBattlePass, buyTiers, givenVariantTokens, inProfileSeason, profileSeason, tiersLeft } from "../profiles/seasons.js";
++import { seasonRewardFunctions } from "../profiles/athena.js";
+ import { brokenChallenges, challengeModes, challengesAllUnlocked, challengeWeekCount, completeBrokenChallenges, eventChallengeModes, eventDaySchedules, eventPlan,
+   previewPlan, timeOnly, weekPlan } from "../profiles/challenges.js";
+ 
+@@ -872,6 +873,20 @@ export function adminRoutes(context) {
+     if (!Number.isInteger(level) || level < 1 || level > top) return invalid(res, `The season level must be 1 to ${top}`);
+     inProfileSeason(athena, () => setSeasonLevel(session, level));
+   }));
++  // Fortnite-Offline-Server (../start.mjs, unlock_all): the profile season's Battle Pass bought and on its last tier, with
++  // all its rewards (the same functions as the item shop purchase: buyBattlePass and buyTiers).
++  router.post("/admin/api/accounts/:accountId/battle-pass/max", change(({ res, session, account }) => {
++    const athena = loadIfExists(account.id, "athena");
++    if (!athena) return invalid(res, "The account has no Battle Royale profile yet: it's made when they first play Battle Royale");
++    return inProfileSeason(athena, () => {
++      const rewards = seasonRewardFunctions();
++      const tracker = session.profile("athena");
++      if (tracker.profile.stats.attributes.book_purchased !== true) buyBattlePass(session, rewards);
++      const left = tiersLeft(tracker.profile);
++      if (left > 0) buyTiers(session, left, rewards);
++      return { tier: tracker.profile.stats.attributes.book_level ?? 1 };
++    });
++  }));
+   // {season}: the season's Battle Pass back to before the player bought it (Core-Backend #201, battlepass/reset.js), the
+   // profile's own season when none is named. Answers with what was taken back and refunded.
+   router.post("/admin/api/accounts/:accountId/battle-pass/reset", change(({ req, res, session, account }) => {
+diff --git a/src/services/account/oauth.js b/src/services/account/oauth.js
+index 7a65219..8cfd013 100644
+--- a/src/services/account/oauth.js
++++ b/src/services/account/oauth.js
+@@ -214,6 +214,25 @@ export function oauthRoutes({ accounts, bans, tokens, settings, resetTokens, exc
+         return res.json(tokens.issueUser(clientId, account, "refresh_token"));
+       }
+ 
++      // PS4 (Fortnite-Offline-Server): the console signs in with its PSN token. It is not checked, stored or forwarded: any
++      // token gives the FORTNITE_PS4_ACCOUNT account. Without that variable the grant does not exist. The IP filter is in
++      // ../start.mjs.
++      case "external_auth": {
++        const name = process.env.FORTNITE_PS4_ACCOUNT;
++        if (!name || body.external_auth_type !== "psn") {
++          return sendError(res, 400, "errors.com.epicgames.account.oauth.unsupported_grant_type",
++            `Unsupported grant type: ${body.grant_type}`);
++        }
++        if (!body.external_auth_token || isServerAccountName(name)) return invalidGrant(res, "Invalid PSN login");
++        if (refusesBuild(res, settings, name)) return;
++        const account = accounts.findByName(name) ?? accounts.getOrCreate(name);
++        const ban = banOf(req, account);
++        if (ban) return refuseBan(res, ban);
++        recordAccess(req, account);
++        accounts.recordLogin(account, currentBuild());
++        return res.json(tokens.issueUser(clientId, account, "external_auth"));
++      }
++
+       // An exchange code (GET /account/api/oauth/exchange, below): once, within its five minutes, for its account.
+       case "exchange_code": {
+         const entry = exchangeCodes?.redeem(String(body.exchange_code ?? ""));

@@ -1,0 +1,14 @@
+{
+  "ps4_ip": "auto",
+  "port": 5595,
+  "psn_account": "PS4Player",
+  "bots": {
+    "count": 50,
+    "level": 5,
+    "fight_chance": 30
+  },
+  "unlock_all": [
+    "Everything"
+  ],
+  "lan": false
+}

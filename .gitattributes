@@ -1,0 +1,6 @@
+*.patch -text
+*.sh text eol=lf
+*.bat text eol=crlf
+*.prx binary
+*.ico binary
+*.png binary

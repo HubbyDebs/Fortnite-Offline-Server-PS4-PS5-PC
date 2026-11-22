@@ -1,0 +1,25 @@
+# Local only: never published
+_local/
+tools/
+pc-7.40/
+ezfn/
+descargas/
+server/core-backend/
+server/data/
+server/settings.json
+app/build/
+app/.window/
+app/.ventana/
+plugin/build/
+__pycache__/
+*.exe
+*.lnk
+*.spec
+
+# Game files (Epic Games' property): never in this repository
+*.pkg
+*.pak
+*.sig
+*.utoc
+*.ucas
+eboot.bin
