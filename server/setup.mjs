@@ -1,7 +1,7 @@
 // Downloads Core-Backend (https://github.com/PongooDev/Core-Backend, GPL-3.0) at the commit this project was tested
 // with, applies core-backend.patch (PS4 login and the max Battle Pass admin route) and installs its dependencies.
 // Usage: node setup.mjs        (needs git and npm)
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +11,10 @@ const COMMIT = "4911b0a9eece3a131d336701f3137bcb05646caa";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dir = path.join(here, "core-backend");
 const patch = path.join(here, "core-backend.patch");
-const run = (cmd, args, cwd = here) => execFileSync(cmd, args, { cwd, stdio: "inherit", shell: process.platform === "win32" });
+// npm is npm.cmd on Windows, which needs a shell; the arguments here are fixed, never user input.
+const run = (cmd, args, cwd = here) => (cmd === "npm"
+  ? execSync(`npm ${args.join(" ")}`, { cwd, stdio: "inherit" })
+  : execFileSync(cmd, args, { cwd, stdio: "inherit" }));
 
 if (!fs.existsSync(path.join(dir, ".git"))) {
   console.log(`Cloning Core-Backend into ${dir}`);

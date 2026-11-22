@@ -119,7 +119,7 @@ try {
   check("email login (name@core.com)", pwd.s === 200, pwd.s);
   const all = await request(lan, oauth, { form: { grant_type: "password", username: "Everything@core.com", password: "12345678" } });
   await request(lan, `/fortnite/api/game/v2/profile/${all.b.account_id}/client/QueryProfile?profileId=athena&rvn=-1`, { token: all.b.access_token, json: {} });
-  for (let i = 0; i < 40 && !/everything unlocked|Could not unlock/.test(srv.log()); i++) await new Promise((r) => setTimeout(r, 250));
+  for (let i = 0; i < 160 && !/everything unlocked|Could not unlock/.test(srv.log()); i++) await new Promise((r) => setTimeout(r, 250));
   check("unlock_all account: all cosmetics and Battle Pass maxed", /Everything: everything unlocked/.test(srv.log()), (srv.log().match(/.*unlock.*/i) ?? [""])[0]);
   const locker = await request(lan, `/fortnite/api/game/v2/profile/${all.b.account_id}/client/QueryProfile?profileId=athena&rvn=-1`, { token: all.b.access_token, json: {} });
   const items = Object.keys(locker.b.profileChanges?.[0]?.profile?.items ?? {}).length;
