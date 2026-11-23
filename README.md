@@ -40,7 +40,9 @@ with your own server running on your computer. LAN play between PS4s and PCs is 
 - **The backend (`server/`)** is [Core-Backend](https://github.com/PongooDev/Core-Backend) with a small patch for the
   PS4 (PSN sign-in, a maxed Battle Pass for chosen accounts) and a guard that only lets your consoles and LAN in.
 - **The match server** is [CoreV2](https://github.com/PongooDev/CoreV2) on the PC build of Fortnite 7.40: real bots
-  that drop, loot, fight, heal and build.
+  that drop, loot, fight, heal and build. This project uses [its own CoreV2 build](https://github.com/HubbyDebs/CoreV2)
+  (the latest CoreV2 plus bot traits): download `Core.dll`, `CoreClient.dll` and `CoreRedirect.dll` from its
+  [releases](https://github.com/HubbyDebs/CoreV2/releases).
 - **The desktop app (`app/`)** starts and stops everything, finds your PS4 on the network, installs and updates the
   plugin over FTP, and shows what is going on.
 
@@ -51,6 +53,8 @@ with your own server running on your computer. LAN play between PS4s and PCs is 
 | PS4 plugin: redirect HTTP + DNS to the PC | ✅ working |
 | Sign-in, profile, item shop, cloud settings from the PS4 | ✅ working |
 | Two account modes: progression / everything unlocked (all cosmetics, Battle Pass tier 100) | ✅ working |
+| Bot personalities: twenty traits, skill presets, mixed play styles ([our CoreV2 build](https://github.com/HubbyDebs/CoreV2)) | ✅ built, waiting for the match server to be tested in a match |
+| Bots that build to attack (climb for high ground), peek, escape without ammo | 🚧 planned |
 | Chat and party (XMPP) | 🧪 implemented, being tested |
 | Desktop app (find the PS4, install the plugin, bots, accounts, log) | ✅ working |
 | Match server with bots (CoreV2 + Fortnite PC 7.40) | 🚧 next step |
@@ -107,7 +111,9 @@ or run it directly with `pythonw app/fortnite_offline_server.pyw`.
 | `ps4_ip` | `"auto"` (find consoles with the PlayStation discovery protocol) or a fixed IPv4 |
 | `port` | backend port (default `5595`; XMPP is also served on `5222`) |
 | `psn_account` | account used when a console signs in with PSN |
-| `bots.count` / `bots.level` / `bots.fight_chance` | number of bots (0-99), difficulty (1-10), % of bot-vs-bot fights |
+| `bots.count` / `bots.fight_chance` | number of bots (0-99), % of bot-vs-bot fights |
+| `bots.traits` | the bots' twenty traits, 0-100 each (aim, reactions, aggression, building, height, healing...); without it every trait follows `bots.level` (1-10) |
+| `bots.mixed` | `true`: every bot gets its own skill tier and play style (looter, rusher, builder, camper, balanced) |
 | `unlock_all` | account names with everything unlocked |
 | `lan` | `true` lets any device on the local network in (PCs with Core Launcher, other consoles) |
 
