@@ -63,3 +63,51 @@ index 7a65219..8cfd013 100644
        // An exchange code (GET /account/api/oauth/exchange, below): once, within its five minutes, for its account.
        case "exchange_code": {
          const entry = exchangeCodes?.redeem(String(body.exchange_code ?? ""));
+diff --git a/src/services/matchmaking/warmup.js b/src/services/matchmaking/warmup.js
+index 6625138..af02a85 100644
+--- a/src/services/matchmaking/warmup.js
++++ b/src/services/matchmaking/warmup.js
+@@ -102,6 +102,8 @@ export function warmupRoutes({ tokens, sessions, settings, matchmaker, tournamen
+         ? { count: forced ? bots.count : 0, level: bots.level, health: bots.startingHealth, shield: bots.startingShield, quests: bots.eliminationsCountForQuests,
+           fights: bots.botFightChance ?? 30, teams, noFill: match?.noFill ?? [] }
+         : null,
++      // Fortnite-Offline-Server: the bots' traits beside the bots block (the gameserver reads that one only up to its first "}").
++      botTraits: (forced || teams) && (bots.traits || bots.mixed) ? { mixed: bots.mixed === true, ...(bots.traits ?? {}) } : null,
+       botsMode: mode === null ? null : { id: mode, enabled: event ? true : !noBotsInCustomMatch(current.bots, customKey) && botsInMode(current.bots, mode) },
+       stormDestructionPercent: stormDestructionPercent(current.events),
+       takenBotNames: takenBotNames(accounts, req.body?.botNames)
+diff --git a/src/settings/store.js b/src/settings/store.js
+index 9eebdbb..58e5bb2 100644
+--- a/src/settings/store.js
++++ b/src/settings/store.js
+@@ -624,6 +624,18 @@ function botInteger(value, min, max, base) {
+   const number = typeof value === "string" && value.trim() ? Number(value) : value;
+   return Number.isInteger(number) && number >= min && number <= max ? number : base;
+ }
++// Fortnite-Offline-Server: the bots' twenty traits (0-100 each, CoreV2 fork's botTraits). null: none set, the gameserver
++// takes every trait from the level as before.
++export const botTraitNames = ["aimAccuracy", "aimTracking", "reactionSpeed", "firingFrequency", "aggression", "pursuit", "buildFrequency",
++  "buildSpeed", "heightSeeking", "defensiveBuilding", "editFrequency", "editSpeed", "strafing", "jumping", "awareness", "prediction",
++  "looting", "harvesting", "healing", "rotation"];
++function botTraitsValue(value, base) {
++  if (value === null) return null;
++  if (!value || typeof value !== "object" || Array.isArray(value)) return base ?? null;
++  const out = {};
++  for (const name of botTraitNames) out[name] = botInteger(value[name], 0, 100, base?.[name] ?? 50);
++  return out;
++}
+ function botsValue(value, base) {
+   const given = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+   return {
+@@ -645,7 +657,10 @@ function botsValue(value, base) {
+     // The modes whose lobbies bots fill (#352), none by default.
+     fillLobby: sanitizeBotFillLobby(given.fillLobby, base.fillLobby),
+     // No bots in custom matchmaking matches (#352), on unless turned off.
+-    noCustomMatchBots: typeof given.noCustomMatchBots === "boolean" ? given.noCustomMatchBots : base.noCustomMatchBots !== false
++    noCustomMatchBots: typeof given.noCustomMatchBots === "boolean" ? given.noCustomMatchBots : base.noCustomMatchBots !== false,
++    // Fortnite-Offline-Server: per-trait skills, and a personality of its own for each bot when mixed.
++    traits: botTraitsValue(given.traits, base.traits),
++    mixed: typeof given.mixed === "boolean" ? given.mixed : base.mixed === true
+   };
+ }
+ function warmupSecondsValue(value) {

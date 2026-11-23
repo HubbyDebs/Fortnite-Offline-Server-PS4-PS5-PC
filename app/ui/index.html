@@ -150,6 +150,35 @@ input[type=range]:hover::-webkit-slider-thumb { box-shadow: 0 0 0 6px rgba(123, 
 .notice.visible { display: flex; }
 .notice button { margin-left: auto; height: 28px; padding: 0 12px; border-radius: 8px; border: 0; background: var(--warn); color: #1d1606; font: 700 12px var(--body); cursor: pointer; }
 
+/* skill */
+.skill-label { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 8px; color: var(--txt2); font-size: 13px; }
+.skill-label .extra { color: var(--txt3); font-size: 12px; }
+.skill-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.skill-row .switch { font-size: 12.5px; color: var(--txt2); }
+.link { margin-left: auto; height: 30px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line2); background: rgba(255, 255, 255, .04);
+  color: var(--txt); font: 600 12px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.link:hover { background: rgba(255, 255, 255, .08); }
+.link svg { width: 13px; height: 13px; }
+
+/* traits dialog */
+.dialog { position: fixed; inset: 0; z-index: 15; display: none; place-items: center; background: rgba(6, 8, 14, .72); backdrop-filter: blur(6px); }
+.dialog.visible { display: grid; }
+.dialog .box { width: min(920px, calc(100vw - 48px)); max-height: calc(100vh - 60px); overflow-y: auto; background: var(--card-solid); border: 1px solid var(--line2);
+  border-radius: 18px; padding: 22px 24px; box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .8); animation: enter .2s ease-out; }
+.dialog .box h3 { margin: 0; font: 600 18px var(--head); letter-spacing: .04em; text-transform: uppercase; }
+.dialog .box > p { margin: 4px 0 18px; color: var(--txt2); font-size: 13px; }
+.groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.group { padding: 14px 16px; border-radius: 12px; background: rgba(255, 255, 255, .025); border: 1px solid var(--line); }
+.group h4 { margin: 0 0 10px; font: 600 11.5px var(--head); letter-spacing: .14em; text-transform: uppercase; color: var(--a2); }
+.trait { display: grid; grid-template-columns: 150px 1fr 34px; align-items: center; gap: 12px; padding: 5px 0; }
+.trait span { font-size: 13px; color: var(--txt); display: flex; align-items: center; gap: 6px; }
+.trait b { font: 600 15px var(--head); text-align: right; }
+.soon { font: 600 9.5px var(--body); font-style: normal; letter-spacing: .04em; text-transform: uppercase; color: var(--txt3); border: 1px solid var(--line2); padding: 1px 5px; border-radius: 5px; }
+.trait.later input { opacity: .55; }
+.dialog .foot { display: flex; gap: 8px; margin-top: 16px; }
+.dialog .foot .btn { flex: none; padding: 0 18px; }
+.dialog .foot .btn.primary { margin-left: auto; border: 0; background: linear-gradient(135deg, var(--a1), var(--a2)); }
+
 /* accounts */
 .mode { display: flex; gap: 12px; padding: 12px; border-radius: 12px; background: rgba(255, 255, 255, .025); border: 1px solid var(--line); margin-bottom: 10px; }
 .mode .icon { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; flex: none; }
@@ -277,15 +306,20 @@ input[type=range]:hover::-webkit-slider-thumb { box-shadow: 0 0 0 6px rgba(123, 
       <div class="row2">
         <section class="card">
           <h2>Bots <span class="extra" id="totalPlayers">51 players</span></h2>
-          <div class="presets">
-            <button class="preset" data-p="chill">Chill</button>
-            <button class="preset" data-p="normal">Normal</button>
-            <button class="preset" data-p="sweaty">Sweaty</button>
-            <button class="preset" data-p="chaos">Chaos</button>
-          </div>
           <div class="control"><div class="top"><span>Count</span><b id="vCount">50</b></div><input type="range" id="count" min="0" max="99"></div>
-          <div class="control"><div class="top"><span>Difficulty</span><b id="vLevel">5<small>/10</small></b></div><input type="range" id="level" min="1" max="10"></div>
           <div class="control"><div class="top"><span>Bots fighting each other</span><b id="vFights">30<small>%</small></b></div><input type="range" id="fights" min="0" max="100"></div>
+          <div class="skill-label"><span>Skill</span><span id="skillName" class="extra"></span></div>
+          <div class="presets" id="skillPresets">
+            <button class="preset" data-s="trash">Trash</button>
+            <button class="preset" data-s="easy">Easy</button>
+            <button class="preset" data-s="medium">Medium</button>
+            <button class="preset" data-s="hard">Hard</button>
+            <button class="preset" data-s="sweat">Sweat</button>
+          </div>
+          <div class="skill-row">
+            <label class="switch" title="Every bot gets its own skill tier and play style: looters, rushers, builders, campers"><input type="checkbox" id="mixed"><i></i>Mixed personalities</label>
+            <button class="link" id="openTraits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Customize traits</button>
+          </div>
           <div class="notice" id="notice"><span>Saved · applies after a restart</span><button id="apply">Restart now</button></div>
         </section>
 
@@ -336,6 +370,18 @@ input[type=range]:hover::-webkit-slider-thumb { box-shadow: 0 0 0 6px rgba(123, 
     </div>
   </main>
 </div>
+<div class="dialog" id="traitsDialog">
+  <div class="box">
+    <h3>Bot traits</h3>
+    <p>Each trait drives its own part of the bots' play. With <b>Mixed personalities</b> on, every bot varies around these values.
+       Traits marked <i class="soon">soon</i> are saved now and take effect with the next bot update.</p>
+    <div class="groups" id="traitGroups"></div>
+    <div class="foot">
+      <button class="btn" id="traitsReset">Reset to Medium</button>
+      <button class="btn primary" id="traitsDone">Done</button>
+    </div>
+  </div>
+</div>
 <div class="toasts" id="toasts"></div>
 <div class="curtain" id="curtain"><div><b>The app has closed</b><span>Close this window and open Fortnite Offline Server again.</span></div></div>
 
@@ -343,7 +389,7 @@ input[type=range]:hover::-webkit-slider-thumb { box-shadow: 0 0 0 6px rgba(123, 
 const TOKEN = location.hash.slice(1);
 const $ = (id) => document.getElementById(id);
 let lastId = 0, running = false, busy = false, firstTime = true, logs = [], failures = 0;
-let settings = { bots: { count: 50, level: 5, fight_chance: 30 }, unlock_all: [], lan: false };
+let settings = { bots: { count: 50, level: 5, fight_chance: 30, traits: null, mixed: false }, unlock_all: [], lan: false };
 let backendState = "stopped";
 
 async function api(route, body) {
@@ -363,27 +409,70 @@ function toast(text, error) {
 function needsRestart() { if (running) $("notice").classList.add("visible"); }
 
 /* ---------- bots ---------- */
-const PRESETS = {
-  chill: { count: 30, level: 2, fight_chance: 15 },
-  normal: { count: 50, level: 5, fight_chance: 30 },
-  sweaty: { count: 70, level: 9, fight_chance: 45 },
-  chaos: { count: 99, level: 7, fight_chance: 80 },
-};
+// The twenty traits (0-100). later: saved now, used once the behaviour exists (offensive building, edits, movement).
+const TRAIT_GROUPS = [
+  ["Combat", [["aimAccuracy", "Aim accuracy"], ["aimTracking", "Aim tracking"], ["reactionSpeed", "Reaction speed"],
+    ["firingFrequency", "Fire rate"], ["prediction", "Leading shots"], ["aggression", "Aggression"], ["pursuit", "Pursuit"]]],
+  ["Building", [["buildFrequency", "Builds when shot"], ["buildSpeed", "Build speed"], ["defensiveBuilding", "Boxing up"],
+    ["heightSeeking", "Takes height"], ["editFrequency", "Edits", true], ["editSpeed", "Edit speed", true]]],
+  ["Awareness & movement", [["awareness", "Sight range"], ["strafing", "Strafing", true], ["jumping", "Jumping", true], ["rotation", "Rotates early", true]]],
+  ["Survival", [["healing", "Heals early"], ["looting", "Looting", true], ["harvesting", "Farming", true]]],
+];
+const TRAITS = TRAIT_GROUPS.flatMap(([, list]) => list.map(([key]) => key));
+const SKILLS = { trash: [5, 1], easy: [25, 3], medium: [50, 5], hard: [75, 8], sweat: [100, 10] };
+const uniform = (v) => Object.fromEntries(TRAITS.map((k) => [k, v]));
+// Without saved traits the bots follow their level: shown as that level's uniform value.
+const LEVEL_VALUE = { 1: 5, 3: 25, 5: 50, 8: 75, 10: 100 };
+const currentTraits = () => settings.bots.traits ?? uniform(LEVEL_VALUE[settings.bots.level] ?? Math.round((settings.bots.level - 1) / 9 * 100));
+function slider(el, value) {
+  el.value = value;
+  el.style.setProperty("--p", ((value - el.min) / (el.max - el.min) * 100) + "%");
+}
 function drawBots() {
   const b = settings.bots;
-  for (const [id, key] of [["count", "count"], ["level", "level"], ["fights", "fight_chance"]]) {
-    const el = $(id);
-    el.value = b[key];
-    el.style.setProperty("--p", ((b[key] - el.min) / (el.max - el.min) * 100) + "%");
-  }
+  slider($("count"), b.count);
+  slider($("fights"), b.fight_chance);
   $("vCount").textContent = b.count;
-  $("vLevel").innerHTML = b.level + "<small>/10</small>";
   $("vFights").innerHTML = b.fight_chance + "<small>%</small>";
   $("totalPlayers").textContent = (b.count + 1) + " players";
-  document.querySelectorAll(".preset").forEach((p) => {
-    const v = PRESETS[p.dataset.p];
-    p.classList.toggle("active", v.count === b.count && v.level === b.level && v.fight_chance === b.fight_chance);
+  $("mixed").checked = !!b.mixed;
+  const t = currentTraits();
+  const values = TRAITS.map((k) => t[k]);
+  const same = values.every((v) => v === values[0]);
+  let name = "Custom";
+  document.querySelectorAll("#skillPresets .preset").forEach((p) => {
+    const on = same && values[0] === SKILLS[p.dataset.s][0];
+    p.classList.toggle("active", on);
+    if (on) name = p.textContent;
   });
+  $("skillName").textContent = (b.mixed ? "Mixed · " : "") + name;
+}
+function drawTraits() {
+  const t = currentTraits();
+  $("traitGroups").replaceChildren(...TRAIT_GROUPS.map(([title, list]) => {
+    const g = document.createElement("div");
+    g.className = "group";
+    const h = document.createElement("h4");
+    h.textContent = title;
+    g.append(h);
+    for (const [key, label, later] of list) {
+      const row = document.createElement("label");
+      row.className = "trait" + (later ? " later" : "");
+      row.innerHTML = '<span></span><input type="range" min="0" max="100"><b></b>';
+      row.querySelector("span").textContent = label;
+      if (later) row.querySelector("span").insertAdjacentHTML("beforeend", ' <i class="soon">soon</i>');
+      const input = row.querySelector("input"), out = row.querySelector("b");
+      slider(input, t[key]);
+      out.textContent = t[key];
+      input.oninput = () => {
+        slider(input, +input.value);
+        out.textContent = input.value;
+        changeBots({ traits: { ...currentTraits(), [key]: +input.value } });
+      };
+      g.append(row);
+    }
+    return g;
+  }));
 }
 let saveTimer;
 function changeBots(changes) {
@@ -396,9 +485,16 @@ function changeBots(changes) {
   }, 350);
 }
 $("count").oninput = (e) => changeBots({ count: +e.target.value });
-$("level").oninput = (e) => changeBots({ level: +e.target.value });
 $("fights").oninput = (e) => changeBots({ fight_chance: +e.target.value });
-document.querySelectorAll(".preset").forEach((p) => p.onclick = () => changeBots(PRESETS[p.dataset.p]));
+$("mixed").onchange = (e) => changeBots({ mixed: e.target.checked });
+document.querySelectorAll("#skillPresets .preset").forEach((p) => p.onclick = () => {
+  const [value, level] = SKILLS[p.dataset.s];
+  changeBots({ traits: uniform(value), level });
+});
+$("openTraits").onclick = () => { drawTraits(); $("traitsDialog").classList.add("visible"); };
+$("traitsDone").onclick = () => $("traitsDialog").classList.remove("visible");
+$("traitsDialog").onclick = (e) => { if (e.target.id === "traitsDialog") $("traitsDialog").classList.remove("visible"); };
+$("traitsReset").onclick = () => { changeBots({ traits: uniform(50), level: 5 }); drawTraits(); };
 
 /* ---------- accounts ---------- */
 function drawAccounts() {

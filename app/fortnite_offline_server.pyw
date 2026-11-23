@@ -41,6 +41,9 @@ NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 EDGE = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
         r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"]
 GH = "/data/GoldHEN"
+TRAITS = ["aimAccuracy", "aimTracking", "reactionSpeed", "firingFrequency", "aggression", "pursuit", "buildFrequency", "buildSpeed",
+          "heightSeeking", "defensiveBuilding", "editFrequency", "editSpeed", "strafing", "jumping", "awareness", "prediction",
+          "looting", "harvesting", "healing", "rotation"]
 
 
 # ---------------------------------------------------------------- settings
@@ -262,7 +265,8 @@ class State:
         self.started = time.time()
         self.backend = ("starting", "Starting…")
         b = self.settings["bots"]
-        self.log(f"Starting · {b['count']} bots, level {b['level']}", "info")
+        skill = "custom traits" if b.get("traits") else f"level {b['level']}"
+        self.log(f"Starting · {b['count']} bots, {skill}{', mixed personalities' if b.get('mixed') else ''}", "info")
         self.last_check = 0
         threading.Thread(target=self.read, args=(p,), daemon=True).start()
 
@@ -304,8 +308,12 @@ class State:
         if "bots" in changes:
             b = changes["bots"]
             clamp = lambda v, lo, hi: max(lo, min(hi, int(v)))
-            s["bots"] = {"count": clamp(b["count"], 0, 99), "level": clamp(b["level"], 1, 10),
-                         "fight_chance": clamp(b["fight_chance"], 0, 100)}
+            bots = {"count": clamp(b["count"], 0, 99), "level": clamp(b["level"], 1, 10),
+                    "fight_chance": clamp(b["fight_chance"], 0, 100), "mixed": bool(b.get("mixed", False))}
+            traits = b.get("traits")
+            if isinstance(traits, dict):
+                bots["traits"] = {k: clamp(traits[k], 0, 100) for k in TRAITS if k in traits}
+            s["bots"] = bots
         if "lan" in changes:
             s["lan"] = bool(changes["lan"])
         if "unlock_all" in changes:

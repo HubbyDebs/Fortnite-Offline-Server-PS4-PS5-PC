@@ -49,6 +49,22 @@ if (!/^[A-Za-z0-9_]{3,16}$/.test(s.psn_account ?? "") || /^(Core)?Server/i.test(
 if (!within(s.bots?.count, 0, 99)) fail("bots.count goes from 0 to 99");
 if (!within(s.bots?.level, 1, 10)) fail("bots.level goes from 1 to 10");
 if (!within(s.bots?.fight_chance, 0, 100)) fail("bots.fight_chance goes from 0 to 100");
+// The bots' twenty traits (0-100; see TRAITS), or none: every trait then follows bots.level as before. bots.mixed gives each
+// bot a personality of its own around them (needs the Fortnite-Offline-Server build of CoreV2).
+const TRAITS = ["aimAccuracy", "aimTracking", "reactionSpeed", "firingFrequency", "aggression", "pursuit", "buildFrequency", "buildSpeed",
+  "heightSeeking", "defensiveBuilding", "editFrequency", "editSpeed", "strafing", "jumping", "awareness", "prediction", "looting",
+  "harvesting", "healing", "rotation"];
+let traits = null;
+if (s.bots.traits != null) {
+  if (typeof s.bots.traits !== "object" || Array.isArray(s.bots.traits)) fail("bots.traits must be an object of traits 0-100");
+  traits = {};
+  for (const name of TRAITS) {
+    const v = s.bots.traits[name] ?? 50;
+    if (!within(v, 0, 100)) fail(`bots.traits.${name} goes from 0 to 100`);
+    traits[name] = v;
+  }
+}
+const mixed = s.bots.mixed === true;
 // Accounts with everything unlocked (every cosmetic and the Battle Pass maxed); the rest progress by playing.
 const unlockAll = new Set((s.unlock_all ?? []).map((n) => String(n).toLowerCase()));
 
@@ -62,7 +78,9 @@ backendSettings.bots = {
   forcePlayerAIs: s.bots.count > 0,
   count: s.bots.count,
   level: s.bots.level,
-  botFightChance: s.bots.fight_chance
+  botFightChance: s.bots.fight_chance,
+  traits,
+  mixed
 };
 fs.writeFileSync(backendSettingsFile, JSON.stringify(backendSettings, null, 2));
 
@@ -178,7 +196,7 @@ if (open) {
   xmpp.listen(XMPP_PORT, "0.0.0.0");
 }
 
-console.log(`Backend on port ${s.port}. Bots: ${s.bots.count}, level ${s.bots.level}.`);
+console.log(`Backend on port ${s.port}. Bots: ${s.bots.count}, ${traits ? "custom traits" : `level ${s.bots.level}`}${mixed ? ", mixed personalities" : ""}.`);
 console.log(`Admin panel: http://127.0.0.1:${s.port}/admin`);
 if (open) {
   for (const i of Object.values(os.networkInterfaces()).flat()) {

@@ -22,9 +22,9 @@ function check(what, ok, extra = "") {
   console.log(`${ok ? "OK  " : "FAIL"} ${what} ${extra}`);
 }
 
-async function start(ps4Ip, ...more) {
+async function start(ps4Ip, more = [], extra = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fn-ps4-"));
-  fs.writeFileSync(path.join(tmp, "s.json"), JSON.stringify({ ...base, ps4_ip: ps4Ip, port }));
+  fs.writeFileSync(path.join(tmp, "s.json"), JSON.stringify({ ...base, ...extra, ps4_ip: ps4Ip, port }));
   const p = spawn(process.execPath, [path.join(here, "start.mjs"), "--settings", path.join(tmp, "s.json"), "--data", tmp, ...more]);
   let output = "";
   await new Promise((resolve, reject) => {
@@ -176,6 +176,7 @@ try {
     json: { phase: "Warmup", accountIds: [id], secondsLeft: 100, playlistId: 0, playlistName: "Playlist_DefaultSolo" }
   });
   check("gameserver gets the bots", (w.b.bots?.count ?? 0) === base.bots.count, JSON.stringify(w.b.bots));
+  check("no traits set: no botTraits (bots follow their level)", w.b.botTraits === null, JSON.stringify(w.b.botTraits));
   check("admin panel closed to the network", (await request(lan, "/admin/api/matchmaking/overview")).s === 403);
   check("the PSN token is not logged", !srv.log().includes("SECRET-PSN"));
 } catch (e) {
@@ -185,9 +186,29 @@ try {
   await srv.stop();
 }
 
+// Traits and mixed personalities reach the gameserver in the warmup answer.
+srv = await start(lan, [], { bots: { ...base.bots, mixed: true, traits: { aimAccuracy: 90, buildFrequency: 80, aggression: 10 } } });
+try {
+  const ds = await request("127.0.0.1", "/account/api/oauth/token", {
+    form: { grant_type: "client_credentials" },
+    client: "313dfed3ec3023e52d3be9dda178bdfa:111aa434a6780d54f5cf759149639f20"
+  });
+  const w = await request("127.0.0.1", "/fortnite/api/game/v2/matchmakingservice/warmup", {
+    token: ds.b.access_token, ua: "Core V2",
+    json: { phase: "Warmup", accountIds: [], secondsLeft: 100, playlistId: 0, playlistName: "Playlist_DefaultSolo" }
+  });
+  const t = w.b.botTraits ?? {};
+  check("botTraits sent with mixed and the traits (unset ones at 50)", t.mixed === true && t.aimAccuracy === 90 && t.buildFrequency === 80
+    && t.aggression === 10 && t.healing === 50 && Object.keys(t).length === 21, JSON.stringify(t));
+} catch (e) {
+  check("traits walkthrough", false, e.stack);
+} finally {
+  await srv.stop();
+}
+
 const closed = [["another LAN address is refused", "192.0.2.1"], ["--pc-only closes the network", lan, "--pc-only"]];
 for (const [what, ps4Ip, ...more] of closed) {
-  srv = await start(ps4Ip, ...more);
+  srv = await start(ps4Ip, more);
   try {
     let refused = false;
     try {
