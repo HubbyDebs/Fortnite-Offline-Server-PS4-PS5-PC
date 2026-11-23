@@ -54,7 +54,8 @@ with your own server running on your computer. LAN play between PS4s and PCs is 
 | Sign-in, profile, item shop, cloud settings from the PS4 | ✅ working |
 | Two account modes: progression / everything unlocked (all cosmetics, Battle Pass tier 100) | ✅ working |
 | Bot personalities: twenty traits, skill presets, mixed play styles ([our CoreV2 build](https://github.com/HubbyDebs/CoreV2)) | ✅ built, waiting for the match server to be tested in a match |
-| Bots that build to attack (climb for high ground), peek, escape without ammo | 🚧 planned |
+| Bots that take height on you (wall + ramp stairs up to 3 floors), strafe and jump by traits, run when out of ammo | ✅ built, waiting for the match server to be tested in a match |
+| Peeking, climbing round the sides, edits | 🚧 planned |
 | Chat and party (XMPP) | 🧪 implemented, being tested |
 | Desktop app (find the PS4, install the plugin, bots, accounts, log) | ✅ working |
 | Match server with bots (CoreV2 + Fortnite PC 7.40) | 🚧 next step |
