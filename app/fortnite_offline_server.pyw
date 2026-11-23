@@ -428,6 +428,11 @@ class Api(BaseHTTPRequestHandler):
         if route == "/icon.png":
             with open(os.path.join(BUNDLED, "icon.png"), "rb") as f:
                 return self.send(200, f.read(), "image/png")
+        if route in ("/bg.jpg", "/bg.png"):
+            bg_path = os.path.join(BUNDLED, "ui", route.lstrip("/"))
+            if os.path.isfile(bg_path):
+                with open(bg_path, "rb") as f:
+                    return self.send(200, f.read(), "image/jpeg" if route.endswith(".jpg") else "image/png")
         if route == "/api/state" and self.authorized():
             LAST_PING[0] = time.time()
             m = re.search(r"since=(\d+)", self.path)
