@@ -805,7 +805,7 @@ index 0000000..9e7485b
 +    }
 +}
 diff --git a/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotController.cpp b/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotController.cpp
-index d0d4fd2..282b9c7 100644
+index d0d4fd2..134582b 100644
 --- a/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotController.cpp
 +++ b/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotController.cpp
 @@ -10,6 +10,7 @@
@@ -1376,7 +1376,7 @@ index d0d4fd2..282b9c7 100644
          for (const TWeakObjectPtr<AFortPawn>& Weak : Manager->GetEnemyPawns())
          {
              AFortPawn* Other = Weak.Get();
-@@ -5336,6 +5568,222 @@ bool FCoreAthenaBotController::Investigate(float Now)
+@@ -5336,6 +5568,225 @@ bool FCoreAthenaBotController::Investigate(float Now)
  #endif
  }
  
@@ -1487,7 +1487,7 @@ index d0d4fd2..282b9c7 100644
 +    const bool bCornered = bSeen && Dist2D(Location, Threat) < 450.0f;
 +    if (bRetreating)
 +    {
-+        if (Vitals >= Recovered || Now >= RetreatUntil || Consumables.empty() || bCornered || bHeadingForSafeZone || IsInStorm())
++        if (Vitals >= Recovered || Now >= RetreatUntil || !BestHealItem() || bCornered || bHeadingForSafeZone || IsInStorm())
 +        {
 +            bRetreating = false;
 +            if (Vitals < Recovered)
@@ -1502,7 +1502,7 @@ index d0d4fd2..282b9c7 100644
 +        CoreAthenaBotAwareness::FRetreatSituation Situation;
 +        Situation.Vitals = Vitals;
 +        Situation.Healing = AIBotSkills.Traits.Healing;
-+        Situation.bHasHeals = !Consumables.empty();
++        Situation.bHasHeals = BestHealItem() != nullptr;
 +        Situation.bUnderFire = bUnderFire;
 +        Situation.bEnemyKnown = Enemy != nullptr;
 +        Situation.bEnemyInSight = bSeen;
@@ -1523,8 +1523,11 @@ index d0d4fd2..282b9c7 100644
 +    StopFiring();
 +    SetTargeting(false);
 +    CancelReload();
-+    // Out of its sight with no hit for a moment: it stops there, and Heal (its own conditions) uses an item.
-+    if (NextRetreatPlan > 0.0f && !bSeen && Now - LastHurtTime > 1.5f && (bRetreatGoalHidden || Dist2D(Location, RetreatGoal) < 200.0f))
++    // At its spot, or somewhere the shooter's eyes can't reach (a wall between them, not just a moment out of its sight),
++    // with no hit for a moment: it stops there, and Heal (its own conditions) uses an item.
++    const bool bAtSpot = NextRetreatPlan > 0.0f && Dist2D(Location, RetreatGoal) < 250.0f;
++    const bool bCovered = !bSeen && IsBlocked(Pawn, FVector(Threat.X, Threat.Y, Threat.Z + 60.0f), FVector(Location.X, Location.Y, Location.Z + 60.0f));
++    if (NextRetreatPlan > 0.0f && !bSeen && Now - LastHurtTime > 1.5f && (bAtSpot || bCovered))
 +    {
 +        StopMoving();
 +        if (!IsInCombat(Now))
@@ -1599,7 +1602,7 @@ index d0d4fd2..282b9c7 100644
  void FCoreAthenaBotController::ClearNextDestination()
  {
      NextPOI = -1;
-@@ -5363,6 +5811,10 @@ bool FCoreAthenaBotController::SelectNextPOI(float Now)
+@@ -5363,6 +5814,10 @@ bool FCoreAthenaBotController::SelectNextPOI(float Now)
      const FCoreAthenaBotLandingSpot* Spot = Manager->GetPOI(NextPOI);
      if (Spot)
      {
@@ -1610,7 +1613,7 @@ index d0d4fd2..282b9c7 100644
          // A spot the storm is closing on is given up.
          FVector Center;
          float Radius = 0.0f;
-@@ -5383,6 +5835,7 @@ bool FCoreAthenaBotController::SelectNextPOI(float Now)
+@@ -5383,6 +5838,7 @@ bool FCoreAthenaBotController::SelectNextPOI(float Now)
          {
              Log::Info(L"Battle Royale bots: {} arrives at {} after {:.0f} s", BotName, Spot->Name, Now - POITravelStartTime);
              ++POIsVisited;
@@ -1618,7 +1621,7 @@ index d0d4fd2..282b9c7 100644
              ClearNextDestination();
              return false;
          }
-@@ -5421,6 +5874,8 @@ bool FCoreAthenaBotController::SelectNextPOI(float Now)
+@@ -5421,6 +5877,8 @@ bool FCoreAthenaBotController::SelectNextPOI(float Now)
          NextPOI = Next;
          VisitedPOIs.push_back(Next);
          POITravelStartTime = Now;
@@ -1627,7 +1630,7 @@ index d0d4fd2..282b9c7 100644
          // A spot on the ground near its middle (the volume's centre can be in the air or inside a building).
          if (!Manager->FindGroundNear(Spot->Location, Spot->Radius * 0.25f, POIDestination))
          {
-@@ -5455,6 +5910,19 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
+@@ -5455,6 +5913,19 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
      // Sprinting to get there, as players do (CoreV2 #373: the bots ran at 4.1 m/s for a second and a half each time their
      // target left their sight, and looked as if they walked); running only while firing.
      SetMovementStyle(!bFiring, Now);
@@ -1647,7 +1650,7 @@ index d0d4fd2..282b9c7 100644
      FVector SteerGoal = Destination;
      if (FollowPath(Destination, Now, AcceptanceRadius, SteerGoal))
      {
-@@ -5467,6 +5935,19 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
+@@ -5467,6 +5938,19 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
          {
              OpenDoorInTheWay(Ahead, Now);
          }
@@ -1667,7 +1670,7 @@ index d0d4fd2..282b9c7 100644
          // A wall the path doesn't know of (a piece built since its navmesh tile was made, a closed door that didn't
          // open): held up against it for most of a second, the bot steers around it for a moment instead of walking into
          // it until TryToUnstuck's checks (3 s) give up on the path (CoreV2 #252: "some bots walk into walls").
-@@ -5475,6 +5956,14 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
+@@ -5475,6 +5959,14 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
          const bool bHeldUp = Movement && Movement->MovementMode == MoveWalking && std::sqrt(Velocity.X * Velocity.X + Velocity.Y * Velocity.Y) < 60.0f
              && IsBlocked(Pawn, FVector(Location.X, Location.Y, Location.Z - 30.0f), FVector(Location.X, Location.Y, Location.Z - 30.0f) + Ahead * 90.0f)
              && IsBlocked(Pawn, FVector(Location.X, Location.Y, Location.Z + 70.0f), FVector(Location.X, Location.Y, Location.Z + 70.0f) + Ahead * 90.0f);
@@ -1682,7 +1685,7 @@ index d0d4fd2..282b9c7 100644
          if (!bHeldUp)
          {
              HeldUpOnPathSince = -1.0f;
-@@ -5486,6 +5975,29 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
+@@ -5486,6 +5978,29 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
          else if (Now - HeldUpOnPathSince > 0.75f)
          {
              HeldUpOnPathSince = -1.0f;
@@ -1712,7 +1715,7 @@ index d0d4fd2..282b9c7 100644
              StopMoving();
              SteerReason = L"wall on its path";
              PathFailedUntil = Now + 1.5f;
-@@ -5503,10 +6015,235 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
+@@ -5503,57 +6018,282 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
      FVector Direction = Direction2D(Location, SteerGoal);
      OpenDoorInTheWay(Direction, Now);
      SteerAroundObstacles(Direction, Now);
@@ -1724,13 +1727,19 @@ index d0d4fd2..282b9c7 100644
  #endif
  }
  
+-void FCoreAthenaBotController::StopMoving()
 +bool FCoreAthenaBotController::IsSeenByHuman(const FVector& Location) const
-+{
+ {
+-    bHasMoveGoal = false;
+-    SteerReason = L"standing";
+-    if (bPathFollowing)
 +#if WITH_SERVER_CODE
 +    // A human player within 200 m could be looking: nothing is moved by hand where a player could see it.
 +    AFortGameModeAthena* GameMode = Manager ? Manager->GetGameMode() : nullptr;
 +    if (!GameMode)
-+    {
+     {
+-        bPathFollowing = false;
+-        if (AAIController* AIController = Controller.Get())
 +        return true;
 +    }
 +    const TArray<AFortPlayerControllerAthena*>& Alive = GameMode->AlivePlayers;
@@ -1739,45 +1748,68 @@ index d0d4fd2..282b9c7 100644
 +        AFortPlayerControllerAthena* PC = Alive[Index];
 +        APawn* Human = PC ? PC->GetPawn() : nullptr;
 +        if (Human && !FCoreAthenaBotManager::IsBotPawn(reinterpret_cast<UObject*>(Human)) && Dist2D(LocationOf(reinterpret_cast<AActor*>(Human)), Location) < 20000.0f)
-+        {
+         {
+-            AIController->StopMovement();
 +            return true;
-+        }
-+    }
+         }
+     }
 +    return false;
 +#else
 +    return true;
 +#endif
-+}
-+
+ }
+ 
+-bool FCoreAthenaBotController::FollowPath(const FVector& Destination, float Now, float AcceptanceRadius, FVector& SteerGoal)
 +bool FCoreAthenaBotController::TrappedRecovery(float Now)
-+{
-+#if WITH_SERVER_CODE
+ {
+ #if WITH_SERVER_CODE
+-    // 21.40's _Movement with a navmesh: AAIController::MoveToLocation with pathfinding (a partial path where the tiles
+-    // around the bot end), followed by the engine's path following. A far goal is reached a leg at a time, each leg's end
+-    // a point on the navmesh, and the next leg is asked for while the bot is still on the last one. It steers only when
+-    // there is no navmesh to path on (off it, its tiles not built yet) or no path, for a moment (21.40's OnGoalOffNavMesh).
+-    SteerGoal = Destination;
+-    AAIController* AIController = Controller.Get();
 +    // Fortnite-Offline-Server: 7.40 bots-only matches lost a quarter of their bots trapped for minutes in one place (a
 +    // path into a wall, a room with no way out it could find), the storm then killing them. Its position every 5 s:
 +    // within 6 m of where it was 30 s ago, out of a fight and far from its goal, it is trapped. It first walks to a
 +    // navmesh point 15-25 m away in another way (8 s); trapped again within 90 s with the storm on it or coming, and
 +    // no player near enough to see, it is put inside the next circle (Titanium's "unseen storm relocation" idea).
-+    AFortPlayerPawnAthena* Pawn = GetPawn();
+     AFortPlayerPawnAthena* Pawn = GetPawn();
+-    if (!Manager->HasNavigation() || State != ECoreAthenaBotState::Landed || !AIController || !Pawn)
 +    UWorld* World = Manager && Manager->GetGameMode() ? Manager->GetGameMode()->GetWorld() : nullptr;
 +    if (!Pawn || !World || State != ECoreAthenaBotState::Landed)
-+    {
-+        return false;
-+    }
+     {
+-        if (bPathFollowing)
+-        {
+-            StopMoving();
+-        }
+-        SteerReason = L"no navigation";
+         return false;
+     }
+-    if (Now < PathFailedUntil)
 +    const FVector Location = LastKnownPosition;
 +    if (Now < RecoveryUntil)
-+    {
+     {
+-        if (bHasSteerTarget)
+-        {
+-            SteerGoal = SteerTarget;
+-        }
+-        if (bPathFollowing)
 +        if (Dist2D(Location, RecoveryGoal) < 300.0f)
-+        {
+         {
+-            bPathFollowing = false;
+-            AIController->StopMovement();
 +            RecoveryUntil = 0.0f;
 +            return false;
-+        }
+         }
 +        MoveTowards(RecoveryGoal, Now, 200.0f);
 +        return true;
 +    }
 +    if (Now < NextTrapSample)
 +    {
-+        return false;
-+    }
+         return false;
+     }
+-    const FVector Location = LocationOf(Pawn);
 +    NextTrapSample = Now + 5.0f;
 +    TrapSamples.push_back({ Now, Location });
 +    std::erase_if(TrapSamples, [Now](const std::pair<float, FVector>& Sample) { return Now - Sample.first > 30.0f; });
@@ -1945,10 +1977,57 @@ index d0d4fd2..282b9c7 100644
 +#endif
 +}
 +
- void FCoreAthenaBotController::StopMoving()
- {
-     bHasMoveGoal = false;
-@@ -5629,6 +6366,29 @@ bool FCoreAthenaBotController::RequestPath(const FVector& Destination, float Now
++void FCoreAthenaBotController::StopMoving()
++{
++    bHasMoveGoal = false;
++    SteerReason = L"standing";
++    if (bPathFollowing)
++    {
++        bPathFollowing = false;
++        if (AAIController* AIController = Controller.Get())
++        {
++            AIController->StopMovement();
++        }
++    }
++}
++
++bool FCoreAthenaBotController::FollowPath(const FVector& Destination, float Now, float AcceptanceRadius, FVector& SteerGoal)
++{
++#if WITH_SERVER_CODE
++    // 21.40's _Movement with a navmesh: AAIController::MoveToLocation with pathfinding (a partial path where the tiles
++    // around the bot end), followed by the engine's path following. A far goal is reached a leg at a time, each leg's end
++    // a point on the navmesh, and the next leg is asked for while the bot is still on the last one. It steers only when
++    // there is no navmesh to path on (off it, its tiles not built yet) or no path, for a moment (21.40's OnGoalOffNavMesh).
++    SteerGoal = Destination;
++    AAIController* AIController = Controller.Get();
++    AFortPlayerPawnAthena* Pawn = GetPawn();
++    if (!Manager->HasNavigation() || State != ECoreAthenaBotState::Landed || !AIController || !Pawn)
++    {
++        if (bPathFollowing)
++        {
++            StopMoving();
++        }
++        SteerReason = L"no navigation";
++        return false;
++    }
++    if (Now < PathFailedUntil)
++    {
++        if (bHasSteerTarget)
++        {
++            SteerGoal = SteerTarget;
++        }
++        if (bPathFollowing)
++        {
++            bPathFollowing = false;
++            AIController->StopMovement();
++        }
++        return false;
++    }
++    const FVector Location = LocationOf(Pawn);
+     // A far goal that drifts (the storm's point on the bot's side of the circle) keeps its leg until it moves a tenth of
+     // the way.
+     const float GoalDrift = bOnLeg ? std::max(250.0f, Dist2D(Location, Destination) * 0.1f) : 250.0f;
+@@ -5629,6 +6369,29 @@ bool FCoreAthenaBotController::RequestPath(const FVector& Destination, float Now
      {
          if (UAthenaNavSystem::ProjectPointToNavigation(World, Location, OnNavMesh, FVector(600.0f, 600.0f, 400.0f)))
          {
@@ -1978,7 +2057,7 @@ index d0d4fd2..282b9c7 100644
              Steer(L"back to the navmesh", 0.5f);
              SteerGoal = OnNavMesh;
              SteerTarget = OnNavMesh;
-@@ -5720,15 +6480,25 @@ void FCoreAthenaBotController::OpenDoorInTheWay(const FVector& Direction, float
+@@ -5720,15 +6483,25 @@ void FCoreAthenaBotController::OpenDoorInTheWay(const FVector& Direction, float
      }
      NextDoorProbe = Now + 0.25f;
      const FVector Location = LocationOf(Pawn);
@@ -2010,7 +2089,7 @@ index d0d4fd2..282b9c7 100644
      {
          return;
      }
-@@ -6050,14 +6820,18 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
+@@ -6050,14 +6823,18 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
  #if WITH_SERVER_CODE
      // Ammo boxes are worth it while the bot wants ammo for its guns; chests while it wants anything, a better gun too
      // (a free slot, or one below epic: the community list, bots look for better loot).
@@ -2030,7 +2109,7 @@ index d0d4fd2..282b9c7 100644
      }
      const bool bWantsChest = bWantsAmmo || bWantsBetter || Consumables.empty();
      ABuildingContainer* Target = ContainerTarget.Get();
-@@ -6082,7 +6856,7 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
+@@ -6082,7 +6859,7 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
      if (!Target && Now >= NextContainerSearch)
      {
          NextContainerSearch = Now + 2.0f;
@@ -2039,7 +2118,7 @@ index d0d4fd2..282b9c7 100644
          FVector LeashAround;
          float LeashRadius = 0.0f;
          const bool bLeashed = GetSquadLeash(LeashAround, LeashRadius);
-@@ -6104,6 +6878,12 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
+@@ -6104,6 +6881,12 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
          }
          ContainerTarget = Target;
      }
@@ -2052,7 +2131,7 @@ index d0d4fd2..282b9c7 100644
      if (!Target)
      {
          return false;
-@@ -6419,6 +7199,7 @@ bool FCoreAthenaBotController::DamagePawn(AFortPawn* Victim, AFortWeapon* Weapon
+@@ -6419,6 +7202,7 @@ bool FCoreAthenaBotController::DamagePawn(AFortPawn* Victim, AFortWeapon* Weapon
      const float Before = Victim->GetHealth() + Victim->GetShield();
      const float HealthBefore = Victim->GetHealth();
      const float ShieldBefore = Victim->GetShield();
@@ -2060,7 +2139,7 @@ index d0d4fd2..282b9c7 100644
      bool bApplied = false;
      for (int32_t Index = 0; Index < std::max(Hits, 1) && !Victim->bIsDying; ++Index)
      {
-@@ -6440,6 +7221,22 @@ bool FCoreAthenaBotController::DamagePawn(AFortPawn* Victim, AFortWeapon* Weapon
+@@ -6440,6 +7224,22 @@ bool FCoreAthenaBotController::DamagePawn(AFortPawn* Victim, AFortWeapon* Weapon
              NameOf(static_cast<UFortWeaponItemDefinition*>(Weapon->WeaponData)), std::max(Hits, 1), OutDamage, Before, Victim->bIsDying ? 0.0f : Victim->GetHealth() + Victim->GetShield(),
              Victim->bIsDying ? L", eliminated" : Victim->bIsDBNO ? L", down" : L"");
      }
@@ -2083,7 +2162,7 @@ index d0d4fd2..282b9c7 100644
      return bApplied && OutDamage > 0.0f;
  #else
      return false;
-@@ -6470,8 +7267,11 @@ void FCoreAthenaBotController::OnResourcesHarvested(ABuildingSMActor* Building,
+@@ -6470,8 +7270,11 @@ void FCoreAthenaBotController::OnResourcesHarvested(ABuildingSMActor* Building,
      {
          return;
      }
@@ -2095,7 +2174,7 @@ index d0d4fd2..282b9c7 100644
      Materials[Kind] = std::min(Materials[Kind] + Count, MaxStack);
      static int32_t Logged = 0;
      if (Logged++ < 8 || bDestroyed)
-@@ -6491,6 +7291,12 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
+@@ -6491,6 +7294,12 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
          return false;
      }
      const FVector Location = LocationOf(Pawn);
@@ -2108,7 +2187,7 @@ index d0d4fd2..282b9c7 100644
      // The way it is trying to go first (inside a house its path turns through rooms, and the wall that holds it up is
      // seldom the one towards its goal: the goal's way alone found nothing to break), then the way to its goal.
      const FVector Ahead = WayAhead(Now, Location);
-@@ -6519,7 +7325,28 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
+@@ -6519,7 +7328,28 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
                      continue;
                  }
                  ABuildingSMActor* Building = HitActor ? Cast<ABuildingSMActor>(HitActor) : nullptr;
@@ -2138,7 +2217,7 @@ index d0d4fd2..282b9c7 100644
                  if (Building && !Cast<ABuildingContainer>(HitActor) && !Building->bDestroyed && Building->GetHealth() > 0.0f && !IsUnreachable(Building))
                  {
                      HarvestTarget = Building;
-@@ -6527,7 +7354,10 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
+@@ -6527,7 +7357,10 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
                      HarvestPoint = Hit;
                      bHarvestToUnstick = true;
                      ++BreakThroughs;
@@ -2150,7 +2229,7 @@ index d0d4fd2..282b9c7 100644
                      return true;
                  }
              }
-@@ -6785,6 +7615,11 @@ bool FCoreAthenaBotController::FreeItself(float Now, const wchar_t* Why)
+@@ -6785,6 +7618,11 @@ bool FCoreAthenaBotController::FreeItself(float Now, const wchar_t* Why)
      {
          return true;
      }
@@ -2162,7 +2241,7 @@ index d0d4fd2..282b9c7 100644
      // Not where it's going down to: a hill, a cliff or a wall that isn't a building's in the way at head height (what
      // the bot can't step or jump onto), or where it's going a level and more above (out of a basement, up a slope).
      const float Rise = MoveGoal.Z - Location.Z;
-@@ -7030,6 +7865,239 @@ bool FCoreAthenaBotController::Bunker(float Now, AFortPawn* Threat, bool bUnknow
+@@ -7030,6 +7868,239 @@ bool FCoreAthenaBotController::Bunker(float Now, AFortPawn* Threat, bool bUnknow
  #endif
  }
  
@@ -2402,7 +2481,7 @@ index d0d4fd2..282b9c7 100644
  bool FCoreAthenaBotController::StartBuildingQueue(float Now, const FVector& Towards, const std::vector<FCoreAthenaBotBuildDescriptor>& Descriptors, float InitialDelay, float SameDelay,
      float SameDeviation, float DifferentDelay, float DifferentDeviation, const wchar_t* Reason, bool bToUnstick)
  {
-@@ -7043,6 +8111,7 @@ bool FCoreAthenaBotController::StartBuildingQueue(float Now, const FVector& Towa
+@@ -7043,6 +8114,7 @@ bool FCoreAthenaBotController::StartBuildingQueue(float Now, const FVector& Towa
      const int32_t Kind = static_cast<int32_t>(std::max_element(std::begin(Materials), std::end(Materials)) - std::begin(Materials));
      if (Materials[Kind] < BuildingPieceCost)
      {
@@ -2410,7 +2489,7 @@ index d0d4fd2..282b9c7 100644
          return false;
      }
      const FVector Location = LocationOf(Pawn);
-@@ -7409,6 +8478,7 @@ bool FCoreAthenaBotController::BuildPiece(const FCoreAthenaBotBuildDescriptor& D
+@@ -7409,6 +8481,7 @@ bool FCoreAthenaBotController::BuildPiece(const FCoreAthenaBotBuildDescriptor& D
      UAthenaNavSystem::AddDirtyArea(Building);
      Materials[Kind] -= BuildingPieceCost;
      ++PiecesBuilt;
@@ -2418,7 +2497,7 @@ index d0d4fd2..282b9c7 100644
      static int32_t Logged = 0;
      if (Logged++ < 24)
      {
-@@ -7420,6 +8490,49 @@ bool FCoreAthenaBotController::BuildPiece(const FCoreAthenaBotBuildDescriptor& D
+@@ -7420,6 +8493,49 @@ bool FCoreAthenaBotController::BuildPiece(const FCoreAthenaBotBuildDescriptor& D
  #endif
  }
  
@@ -2468,7 +2547,7 @@ index d0d4fd2..282b9c7 100644
  bool FCoreAthenaBotController::Harvest(float Now)
  {
  #if WITH_SERVER_CODE
-@@ -7439,9 +8552,15 @@ bool FCoreAthenaBotController::Harvest(float Now)
+@@ -7439,9 +8555,15 @@ bool FCoreAthenaBotController::Harvest(float Now)
          StopHarvesting();
          Target = nullptr;
      }
@@ -2486,7 +2565,7 @@ index d0d4fd2..282b9c7 100644
      {
          if (Target)
          {
-@@ -7484,6 +8603,8 @@ bool FCoreAthenaBotController::Harvest(float Now)
+@@ -7484,6 +8606,8 @@ bool FCoreAthenaBotController::Harvest(float Now)
          }
          if (!Target)
          {
@@ -2495,7 +2574,7 @@ index d0d4fd2..282b9c7 100644
              return false;
          }
          HarvestTarget = Target;
-@@ -7507,14 +8628,34 @@ bool FCoreAthenaBotController::Harvest(float Now)
+@@ -7507,14 +8631,34 @@ bool FCoreAthenaBotController::Harvest(float Now)
      {
          return true;
      }
@@ -2530,7 +2609,96 @@ index d0d4fd2..282b9c7 100644
      if (!bApplied || Damage <= 0.0f)
      {
          MarkUnreachable(Target);
-@@ -8897,7 +10038,7 @@ bool FCoreAthenaBotController::LootHealing(float Now)
+@@ -8733,6 +9877,50 @@ void FCoreAthenaBotController::DropItemsOnDeathBeforeRespawning()
+ #endif
+ }
+ 
++UFortItemDefinition* FCoreAthenaBotController::BestHealItem() const
++{
++#if WITH_SERVER_CODE
++    // The item that restores most for its time, without wasting much of it: at least 40 % of what it gives, and 25 or
++    // its half (a bandage below its cap of 75, a medkit at 60 health or less, a shield potion at 75 shield or less, a
++    // Chug Jug when both are low). None when nothing it carries would be worth using now.
++    AFortPlayerPawnAthena* Pawn = GetPawn();
++    if (!Pawn)
++    {
++        return nullptr;
++    }
++    const float Health = Pawn->GetHealth();
++    const float Shield = Pawn->GetShield();
++    const float MaxHealth = std::max(Pawn->GetMaxHealth(), 1.0f);
++    const float MaxShield = std::max(Pawn->GetMaxShield(), 1.0f);
++    UFortItemDefinition* Best = nullptr;
++    float BestScore = 0.0f;
++    for (const auto& [Definition, Count] : Consumables)
++    {
++        const FCoreAthenaBotConsumable* Info = Count > 0 ? GetConsumableInfo(Definition) : nullptr;
++        if (!Info)
++        {
++            continue;
++        }
++        const float HealthGain = std::min(Info->Health, std::max(std::min(Info->HealthCap, MaxHealth) - Health, 0.0f));
++        const float ShieldGain = std::min(Info->Shield, std::max(std::min(Info->ShieldCap, MaxShield) - Shield, 0.0f));
++        const float Worth = Info->Health + Info->Shield;
++        if (HealthGain + ShieldGain < std::min(Worth * 0.5f, 25.0f) || (HealthGain + ShieldGain) < Worth * 0.4f)
++        {
++            continue;
++        }
++        const float Score = (HealthGain * 1.2f + ShieldGain) / Info->UseTime;
++        if (Score > BestScore)
++        {
++            BestScore = Score;
++            Best = Definition;
++        }
++    }
++    return Best;
++#else
++    return nullptr;
++#endif
++}
++
+ bool FCoreAthenaBotController::Heal(float Now)
+ {
+ #if WITH_SERVER_CODE
+@@ -8791,36 +9979,9 @@ bool FCoreAthenaBotController::Heal(float Now)
+     {
+         return false;
+     }
+-    // The item that restores most for its time, without wasting much of it: at least 40 % of what it gives, and 25 or
+-    // its half (a bandage below its cap of 75, a medkit at 60 health or less, a shield potion at 75 shield or less, a
+-    // Chug Jug when both are low).
+     const float Health = Pawn->GetHealth();
+     const float Shield = Pawn->GetShield();
+-    const float MaxHealth = std::max(Pawn->GetMaxHealth(), 1.0f);
+-    const float MaxShield = std::max(Pawn->GetMaxShield(), 1.0f);
+-    UFortItemDefinition* Best = nullptr;
+-    float BestScore = 0.0f;
+-    for (const auto& [Definition, Count] : Consumables)
+-    {
+-        const FCoreAthenaBotConsumable* Info = Count > 0 ? GetConsumableInfo(Definition) : nullptr;
+-        if (!Info)
+-        {
+-            continue;
+-        }
+-        const float HealthGain = std::min(Info->Health, std::max(std::min(Info->HealthCap, MaxHealth) - Health, 0.0f));
+-        const float ShieldGain = std::min(Info->Shield, std::max(std::min(Info->ShieldCap, MaxShield) - Shield, 0.0f));
+-        const float Worth = Info->Health + Info->Shield;
+-        if (HealthGain + ShieldGain < std::min(Worth * 0.5f, 25.0f) || (HealthGain + ShieldGain) < Worth * 0.4f)
+-        {
+-            continue;
+-        }
+-        const float Score = (HealthGain * 1.2f + ShieldGain) / Info->UseTime;
+-        if (Score > BestScore)
+-        {
+-            BestScore = Score;
+-            Best = Definition;
+-        }
+-    }
++    UFortItemDefinition* Best = BestHealItem();
+     if (!Best)
+     {
+         return false;
+@@ -8897,7 +10058,7 @@ bool FCoreAthenaBotController::LootHealing(float Now)
      }
      const float Health = Pawn->GetHealth();
      const float Shield = Pawn->GetShield();
@@ -2539,7 +2707,7 @@ index d0d4fd2..282b9c7 100644
      {
          return false;
      }
-@@ -9088,6 +10229,12 @@ void FCoreAthenaBotController::OnPossesedPawnDied(AFortPlayerStateAthena* Killer
+@@ -9088,6 +10249,12 @@ void FCoreAthenaBotController::OnPossesedPawnDied(AFortPlayerStateAthena* Killer
          PlayerState->ForceNetUpdate();
      }
      DropInventory();
@@ -3499,7 +3667,7 @@ index 2dba827..1acec82 100644
      // UNavigationSystem::ProjectPointToNavigation on the bots' navmesh: the nearest navmesh point within Extent of Point,
      // or false when there is none there (no tile built yet, or inside geometry).
 diff --git a/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotController.h b/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotController.h
-index 745fc01..41429f9 100644
+index 745fc01..48ffe86 100644
 --- a/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotController.h
 +++ b/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotController.h
 @@ -89,6 +89,11 @@ struct FCoreAthenaBotBuildingSkills
@@ -3607,7 +3775,7 @@ index 745fc01..41429f9 100644
      // Spawns the warmup pawn at Location and possesses it.
      bool SpawnPawnAt(const FVector& Location, float Yaw, bool bSkydive);
      // The bus has left: the warmup pawn goes, the bot rides the aircraft until its jump.
-@@ -466,6 +526,13 @@ private:
+@@ -466,6 +526,15 @@ private:
      // 21.40's UFortAthenaAIBotEvaluator_Investigate: an armed bot with nothing left to loot heads for a player near it
      // (a few bots at most go for the same one), and for an enemy it just lost sight of.
      bool Investigate(float Now);
@@ -3618,10 +3786,12 @@ index 745fc01..41429f9 100644
 +    // Fortnite-Offline-Server: low on health and shield under fire with something to heal with, the bot breaks off: it
 +    // runs for a spot out of the shooter's sight, then heals there (Syndicate's BotSurvival FLEE_OR_HIDE, without builds).
 +    bool Retreat(float Now);
++    // The healing item Heal would use now, none when nothing carried is worth using (a mini shield at 50 shield...).
++    UFortItemDefinition* BestHealItem() const;
      // 21.40's UFortAthenaAIBotEvaluator_SelectNextPOI (FindNextBestPOI, SetNextDestination, ClearNextDestination): the
      // spot looted out, the next one nearby inside the safe zone (FCoreAthenaBotManager::FindNextBestPOI).
      bool SelectNextPOI(float Now);
-@@ -475,12 +542,27 @@ private:
+@@ -475,12 +544,27 @@ private:
      void ManageWeapon(float Now);
      // 21.40's _Loot (GatherNearestLoot): the nearest weapon or ammo on the floor, and taking it.
      bool Loot(float Now, float MaxDistance);
@@ -3649,7 +3819,7 @@ index 745fc01..41429f9 100644
      // 21.40's _Movement (TryToUnstuck) and a wander inside the safe zone.
      void Wander(float Now);
      void MoveTowards(const FVector& Destination, float Now, float AcceptanceRadius = 100.0f);
-@@ -621,6 +703,15 @@ private:
+@@ -621,6 +705,15 @@ private:
      // an enemy it hadn't seen shoots it (OddsToBeUsedAgainstUnknownThreat), with a cone roof (OddsToUseRoofBuilding) and a
      // ramp inside towards the threat (OddsToBuildForwardRamp). Threat may be null (the way the bot faces then).
      bool Bunker(float Now, AFortPawn* Threat, bool bUnknownThreat);
@@ -3665,7 +3835,7 @@ index 745fc01..41429f9 100644
      // Starts a build: the origin cell is the bot's, forward the grid axis nearest the way to Towards. Pieces the bot can't
      // afford or whose place isn't clear are left out; false when none is left.
      bool StartBuildingQueue(float Now, const FVector& Towards, const std::vector<FCoreAthenaBotBuildDescriptor>& Descriptors, float InitialDelay, float SameDelay, float SameDeviation,
-@@ -750,6 +841,10 @@ private:
+@@ -750,6 +843,10 @@ private:
      float HarvestTargetTime = 0.0f;
      float NextHarvestSwing = 0.0f;
      float NextHarvestSearch = 0.0f;
@@ -3676,7 +3846,7 @@ index 745fc01..41429f9 100644
      FVector HarvestPoint;
      bool bHarvestToUnstick = false;
      // Set when the building's resource spawn credited the bot during a swing.
-@@ -758,6 +853,20 @@ private:
+@@ -758,6 +855,20 @@ private:
      // DefensiveBuilding's CanBuildNextTimeDelay and the bunker perk's cooldown: no build of that kind before these times.
      float NextDefensiveBuildTime = 0.0f;
      float NextBunkerTime = 0.0f;
@@ -3697,7 +3867,7 @@ index 745fc01..41429f9 100644
      // UFortAthenaAIBotBuildingComponent: the build under way (BuildQueue), the next piece's index, when the last piece went
      // up (LastBuildTime) and the wait before the next (DelayBeforeNextBuildPiece).
      FCoreAthenaBotBuildingQueue BuildQueue;
-@@ -768,6 +877,43 @@ private:
+@@ -768,6 +879,43 @@ private:
      float HideEndTime = 0.0f;
      int32_t PiecesBuilt = 0;
      int32_t BuildsStarted = 0;
@@ -3741,7 +3911,7 @@ index 745fc01..41429f9 100644
      int32_t Swings = 0;
      int32_t BreakThroughs = 0;
      // Squads: who downed the bot, when, its bleed, and the teammate it is reviving.
-@@ -872,6 +1018,8 @@ private:
+@@ -872,6 +1020,8 @@ private:
      // TryToUnstuck's last give-up (a second one near it gives up the far goal too), and the move goal it measures
      // progress towards: how near it got and since when.
      float LastGiveUpTime = -100.0f;
@@ -3750,7 +3920,7 @@ index 745fc01..41429f9 100644
      FVector LastGiveUpLocation;
      FVector ProgressGoal;
      float ProgressDistance = -1.0f;
-@@ -997,6 +1145,23 @@ private:
+@@ -997,6 +1147,23 @@ private:
      TWeakObjectPtr<AFortPawn> LastSeenTarget;
      FVector LastSeenTargetLocation;
      int32_t Hunts = 0;
@@ -3774,7 +3944,7 @@ index 745fc01..41429f9 100644
      // SelectNextPOI: the spots the bot has been to or looted, the one it heads for, where on the ground, and when it
      // looks for the next.
      std::vector<int32_t> VisitedPOIs;
-@@ -1004,7 +1169,13 @@ private:
+@@ -1004,7 +1171,13 @@ private:
      FVector POIDestination;
      float NextPOISearch = 0.0f;
      float POITravelStartTime = 0.0f;

@@ -251,6 +251,8 @@ def summarize(matches):
         "poisLeftPerBot": mean([b["poisLeft"] for b in bots if "poisLeft" in b]),
         "poisReachedPerBot": mean([b["poisReached"] for b in bots]),
         "huntsPerBot": mean([b["hunts"] for b in bots if "hunts" in b]),
+        "heardShotChecksPerBot": mean([b["heardShotChecks"] for b in bots if "heardShotChecks" in b]),
+        "retreatsPerBot": mean([b["retreats"] for b in bots if "retreats" in b]),
         "gatheredPerBot": mean([b["gathered"] for b in bots if "gathered" in b]),
         "swingsPerBot": mean([b["swings"] for b in bots if "swings" in b]),
         "breakThroughsPerBot": mean([b.get("breakThroughs", 0) for b in bots]),
