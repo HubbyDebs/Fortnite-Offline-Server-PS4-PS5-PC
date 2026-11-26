@@ -3,13 +3,13 @@
 <h1 align="center">Fortnite Offline Server</h1>
 
 <p align="center">
-Play <b>Fortnite Battle Royale 7.40</b> (Chapter 1, Season 7) offline, against bots, on a jailbroken <b>PS4</b> and on <b>PC</b>,<br>
+Play <b>Fortnite Battle Royale 3.6</b> (Chapter 1, Season 3) offline, against bots, on a jailbroken <b>PS4</b> and on <b>PC</b>,<br>
 with your own server running on your computer. LAN play between PS4s and PCs is planned.
 </p>
 
 <p align="center">
 <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
-<img alt="Fortnite 7.40" src="https://img.shields.io/badge/Fortnite-7.40-7b5cff">
+<img alt="Fortnite 3.6" src="https://img.shields.io/badge/Fortnite-3.6%20(Season%203)-7b5cff">
 <img alt="PS4 GoldHEN" src="https://img.shields.io/badge/PS4-GoldHEN-2fb8ff">
 </p>
 
@@ -25,11 +25,11 @@ with your own server running on your computer. LAN play between PS4s and PCs is 
 ```
  PS4 (GoldHEN)                                  Your PC
 ┌─────────────────────────┐                   ┌──────────────────────────────────────┐
-│ Fortnite 7.40           │   HTTP (login,    │ Core-Backend  :5595                  │
+│ Fortnite 3.6            │   HTTP (login,    │ Core-Backend  :5595                  │
 │ + fnredir.prx plugin ───┼── lobby, party) ─▶│  accounts, profiles, item shop,      │
 │   sends Epic's servers  │   XMPP :5222      │  matchmaking, chat (XMPP)            │
 │   to your PC            │                   ├──────────────────────────────────────┤
-│                         │   UDP :7777       │ Fortnite PC 7.40 + CoreV2            │
+│                         │   UDP :7777       │ Fortnite PC 3.6 + CoreV2             │
 │                         ├──────────────────▶│  headless match server with bots     │
 └─────────────────────────┘                   └──────────────────────────────────────┘
         ▲  the desktop app finds the console, uploads the plugin and runs everything
@@ -39,10 +39,11 @@ with your own server running on your computer. LAN play between PS4s and PCs is 
   servers to your PC. No game file is changed.
 - **The backend (`server/`)** is [Core-Backend](https://github.com/PongooDev/Core-Backend) with a small patch for the
   PS4 (PSN sign-in, a maxed Battle Pass for chosen accounts) and a guard that only lets your consoles and LAN in.
-- **The match server** is [CoreV2](https://github.com/PongooDev/CoreV2) on the PC build of Fortnite 7.40: real bots
-  that drop, loot, fight, heal and build. This project uses [its own CoreV2 build](https://github.com/HubbyDebs/CoreV2)
-  (the latest CoreV2 plus bot traits): download `Core.dll`, `CoreClient.dll` and `CoreRedirect.dll` from its
-  [releases](https://github.com/HubbyDebs/CoreV2/releases).
+- **The match server** is [CoreV2](https://github.com/PongooDev/CoreV2) on the PC build of Fortnite 3.6: real bots
+  that drop, loot, fight, heal and build. The bots are this project's own work, in [`corev2/`](corev2): CoreV2 at a
+  fixed commit plus `corev2/corev2.patch` (navigation, storm, looting, fights, traits, match stats, navmesh cache).
+  GitHub builds it on every change and publishes `Core.dll`, `CoreClient.dll` and `CoreRedirect.dll` as a `bots-N`
+  [release](https://github.com/HubbyDebs/Fortnite-Offline-Server-PS4-PS5-PC/releases), which the app downloads.
 - **The desktop app (`app/`)** starts and stops everything, finds your PS4 on the network, installs and updates the
   plugin over FTP, and shows what is going on.
 
@@ -53,21 +54,21 @@ with your own server running on your computer. LAN play between PS4s and PCs is 
 | PS4 plugin: redirect HTTP + DNS to the PC | ✅ working |
 | Sign-in, profile, item shop, cloud settings from the PS4 | ✅ working |
 | Two account modes: progression / everything unlocked (all cosmetics, Battle Pass tier 100) | ✅ working |
-| Bot personalities: twenty traits, skill presets, mixed play styles ([our CoreV2 build](https://github.com/HubbyDebs/CoreV2)) | ✅ built, waiting for the match server to be tested in a match |
+| Bot personalities: twenty traits, skill presets, mixed play styles ([`corev2/`](corev2)) | ✅ built, waiting for the match server to be tested in a match |
 | Bots that take height on you (wall + ramp stairs up to 3 floors), strafe and jump by traits, run when out of ammo | ✅ built, waiting for the match server to be tested in a match |
 | Peeking, climbing round the sides, edits | 🚧 planned |
 | Chat and party (XMPP) | 🧪 implemented, being tested |
 | Desktop app (find the PS4, install the plugin, bots, accounts, log) | ✅ working |
-| Match server with bots (CoreV2 + Fortnite PC 7.40) | 🚧 next step |
-| LAN: PS4 + PS4, PC + PC, PS4 + PC | 🚧 the backend accepts LAN players; needs the match server. PS4 (CL-4980899) and PC (CL-5046157) builds differ, so cross-play still has to be confirmed |
+| Match server with bots (CoreV2 + Fortnite PC 3.6) | ✅ working: the PS4 joins matches against the bots |
+| LAN: PS4 + PS4, PC + PC, PS4 + PC | 🚧 the backend accepts LAN players; needs the match server. PS4 (CL-4016789) and PC (CL-4019403) builds differ, so cross-play still has to be confirmed |
 
 ## Requirements
 
-- **PS4** with [GoldHEN](https://github.com/GoldHEN/GoldHEN) and its FTP server on, and **Fortnite 7.40**
-  (`CUSA07022`, version 02.02) installed. You provide the game.
+- **PS4** with [GoldHEN](https://github.com/GoldHEN/GoldHEN) and its FTP server on, and **Fortnite 3.6**
+  (Season 3, `ECHO03600`, CL-4016789) installed. You provide the game.
 - **Windows PC** on the same network, with [Node.js](https://nodejs.org) 22+, [Git](https://git-scm.com) and
   [Python](https://www.python.org) 3.11+ (for the desktop app). Microsoft Edge is used for the app's window.
-- For matches (coming soon): the **PC build of Fortnite 7.40** (CL-5046157) in a `pc-7.40` folder. You provide it.
+- For matches: the **PC build of Fortnite 3.6** (CL-4019403) in a folder named like `3.6-CL-4019403` (or `pc-3.6`). You provide it.
 
 ## Setup
 
@@ -93,7 +94,7 @@ or run it directly with `pythonw app/fortnite_offline_server.pyw`.
 1. Turn on the PS4, load GoldHEN and enable its FTP server.
 2. Open **Fortnite Offline Server** on the PC. It finds the console by itself.
 3. Press **Prepare PS4** once: it uploads `fnredir.prx`, writes `/data/GoldHEN/fnredir.ini` with your PC's address
-   and enables the plugin **for Fortnite only** (`[CUSA07022]` in `plugins.ini`; the old file is kept as
+   and enables the plugin **for Fortnite only** (`[ECHO03600]` and `[CUSA07022]` in `plugins.ini`; the old file is kept as
    `plugins.ini.before-fortnite`). From then on, the app keeps the plugin and your PC's IP up to date by itself.
 4. Press the **power button** to start the server.
 5. Start Fortnite on the PS4 and sign in with **`name@core.com`** and any password. The part before `@` is your
@@ -115,8 +116,12 @@ or run it directly with `pythonw app/fortnite_offline_server.pyw`.
 | `bots.count` / `bots.fight_chance` | number of bots (0-99), % of bot-vs-bot fights |
 | `bots.traits` | the bots' twenty traits, 0-100 each (aim, reactions, aggression, building, height, healing...); without it every trait follows `bots.level` (1-10) |
 | `bots.mixed` | `true`: every bot gets its own skill tier and play style (looter, rusher, builder, camper, balanced) |
+| `bots.materials` / `bots.harvest_multiplier` | wood, stone and metal each bot leaves the bus with (0-999), and how many times what its pickaxe harvests (1-10): bots that can afford to build |
 | `unlock_all` | account names with everything unlocked |
 | `lan` | `true` lets any device on the local network in (PCs with Core Launcher, other consoles) |
+| `pc_build` | folder of the PC build of Fortnite 3.6 (CL-4019403), the one holding `FortniteGame`; empty uses `pc-3.6` |
+| `match_server` | `false` does not start the match server with the backend |
+| `warmup_seconds` | seconds on the warmup island before the bus (10-1800); absent uses the game's 120 |
 
 ## Repository layout
 
@@ -125,6 +130,7 @@ or run it directly with `pythonw app/fortnite_offline_server.pyw`.
 | `server/start.mjs` | runs Core-Backend with the settings, the network guard, XMPP on 5222, PS4 discovery and unlock-all |
 | `server/find-ps4.mjs` | PlayStation discovery protocol (UDP 987) |
 | `server/setup.mjs`, `server/core-backend.patch` | fetches Core-Backend at a fixed commit and applies this project's changes |
+| `corev2/setup.mjs`, `corev2/corev2.patch` | the bots: fetches CoreV2 at a fixed commit and applies this project's changes (`--build` also builds it with Visual Studio 2022); `corev2/make-patch.mjs <CoreV2 working copy>` regenerates the patch |
 | `server/test.mjs` | end-to-end test of the backend without the game |
 | `plugin/source/main.c`, `plugin/build.sh` | the GoldHEN plugin and its build script; `plugin/fnredir.prx` is a prebuilt copy |
 | `app/` | desktop app: Python standard library + an HTML interface in an Edge app window |

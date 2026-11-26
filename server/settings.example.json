@@ -1,5 +1,8 @@
 {
   "ps4_ip": "auto",
+  "ps4_performance_mode": true,
+  "ps4_stretched_fov": false,
+  "ps4_fov_mode": "AspectRatio_MaintainYFOV",
   "port": 5595,
   "psn_account": "PS4Player",
   "bots": {
@@ -10,5 +13,7 @@
   "unlock_all": [
     "Everything"
   ],
-  "lan": false
+  "lan": false,
+  "pc_build": "",
+  "match_server": true
 }

@@ -390,6 +390,19 @@ main {
 .btn:disabled { opacity: .48; cursor: default; filter: saturate(.4); }
 .btn svg { width: 15px; height: 15px; color: #0568bd; }
 
+/* Version: which Fortnite build the match server runs (Auto follows the game the PS4 opens). */
+.versions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.versions[hidden] { display: none; }
+.versions-label { font-size: 12px; font-weight: 600; color: var(--txt2); white-space: nowrap; }
+.versions-buttons { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
+.versions-buttons .btn { flex: 1; min-width: 72px; height: 30px; padding: 0 10px; font-size: 12px; }
+.versions-buttons .btn.active {
+  border-color: rgba(0, 132, 232, .9);
+  background: linear-gradient(180deg, #d9f1ff 0%, #9fd6ff 49%, #6fbcf5 51%, #a9dcff 100%);
+  box-shadow: 0 0 0 2px rgba(0, 132, 232, .25), inset 0 1px 0 #fff;
+  font-weight: 700;
+}
+
 /* ==================== STATUS ROWS & 3D JEWEL LEDS ==================== */
 .statuses { display: grid; gap: 8px; }
 .status {
@@ -946,11 +959,236 @@ input[type=range]:hover::-webkit-slider-thumb {
   color: #9f1239;
 }
 
+/* ==================== LIVE TACTICAL MAP ==================== */
+.map-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .92);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .92) 0%, rgba(220, 245, 255, .76) 50%, rgba(190, 232, 255, .72) 52%, rgba(228, 249, 255, .9) 100%);
+  box-shadow: 0 4px 12px rgba(8, 76, 142, .2), inset 0 1px 0 #fff;
+  color: #06447a;
+  font: 700 12px var(--head);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: filter .15s, transform .12s, box-shadow .2s;
+}
+.map-trigger:hover { filter: brightness(1.05); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0, 128, 224, .32), inset 0 1px 0 #fff; }
+.map-trigger:active { transform: translateY(1px); }
+.map-trigger svg { width: 15px; height: 15px; color: #0078e8; }
+.map-trigger.live {
+  background: linear-gradient(180deg, #f0fff6 0%, #c8f9dc 49%, #9ef0be 51%, #d6fce6 100%);
+  border-color: rgba(22, 163, 74, .55);
+  color: #0b5e2e;
+}
+.map-trigger.live svg { color: #15803d; }
+.map-trigger .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #8aa7be;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.8);
+}
+.map-trigger.live .dot {
+  background: #16a34a;
+  box-shadow: 0 0 8px rgba(22, 163, 74, .9);
+  animation: beat 1.8s ease-out infinite;
+}
+
+.map-dialog .box {
+  width: min(1140px, calc(100vw - 32px));
+  height: min(760px, calc(100vh - 36px));
+  max-height: calc(100vh - 36px);
+  padding: 16px 18px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 12px;
+  overflow: hidden;
+}
+.map-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(14, 108, 180, .16);
+}
+.map-head h3 { margin: 0; font: 700 17px var(--head); color: #06355e; display: flex; align-items: center; gap: 8px; }
+.map-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px;
+  font: 700 11px var(--head); letter-spacing: .05em; text-transform: uppercase;
+  background: rgba(251, 191, 36, .2); border: 1px solid rgba(217, 119, 6, .35); color: #92400e;
+}
+.map-badge.live { background: rgba(34, 197, 94, .18); border-color: rgba(22, 163, 74, .45); color: #0e6b35; }
+.map-badge.demo { background: rgba(14, 165, 233, .18); border-color: rgba(2, 132, 199, .42); color: #075985; }
+.map-head .spacer { flex: 1; }
+.map-head .btn { flex: none; height: 31px; padding: 0 12px; font-size: 12px; }
+.map-head .btn.active {
+  color: #fff; border-color: #0663bd; text-shadow: 0 1px 2px rgba(4, 46, 94, .55);
+  background: linear-gradient(180deg, #56c9ff 0%, #179ef2 49%, #057ce0 51%, #26c2ff 100%);
+}
+.map-head .btn.active svg { color: #fff; }
+
+.map-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 316px;
+  gap: 14px;
+  min-height: 0;
+}
+.map-stage {
+  position: relative;
+  border-radius: 15px;
+  overflow: hidden;
+  background: #08233d;
+  border: 1.5px solid rgba(255, 255, 255, .92);
+  box-shadow: inset 0 0 24px rgba(0, 18, 42, .65), 0 10px 26px -10px rgba(5, 48, 96, .45);
+  cursor: grab;
+}
+.map-stage.dragging { cursor: grabbing; }
+.map-stage canvas { width: 100%; height: 100%; display: block; }
+
+.map-hud-top {
+  position: absolute; top: 10px; left: 10px; right: 10px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  pointer-events: none;
+}
+.hud-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 10px;
+  background: rgba(7, 29, 54, .76);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(140, 224, 255, .32);
+  color: #eef8ff;
+  font: 600 11.5px var(--body);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .28);
+}
+.hud-chip b { font-family: var(--mono); font-weight: 700; }
+.hud-chip .c-human { color: #38e8ff; }
+.hud-chip .c-bot { color: #ff9257; }
+.hud-chip .c-storm { color: #d8a2ff; }
+
+.map-hud-bot {
+  position: absolute; bottom: 10px; left: 10px; right: 10px;
+  display: flex; align-items: center; gap: 6px;
+  pointer-events: none;
+}
+.map-hud-bot .map-zoom {
+  display: inline-flex; gap: 4px; pointer-events: auto;
+}
+.map-hud-bot button {
+  width: 30px; height: 30px; border-radius: 9px;
+  border: 1px solid rgba(140, 224, 255, .38);
+  background: rgba(7, 29, 54, .82);
+  color: #eef8ff; font: 700 14px var(--mono);
+  cursor: pointer; display: grid; place-items: center;
+  backdrop-filter: blur(8px);
+}
+.map-hud-bot button:hover { background: rgba(14, 72, 132, .9); border-color: #67d8ff; }
+.map-coords {
+  margin-left: auto;
+  padding: 4px 10px; border-radius: 9px;
+  background: rgba(7, 29, 54, .78);
+  border: 1px solid rgba(140, 224, 255, .28);
+  color: #cceeff; font: 600 11px var(--mono);
+}
+
+.map-empty {
+  position: absolute; inset: 0;
+  display: none; place-items: center;
+  background: rgba(6, 26, 48, .48);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.map-empty.visible { display: grid; }
+.map-empty-card {
+  max-width: 380px; text-align: center; padding: 18px 22px; border-radius: 16px;
+  background: rgba(246, 252, 255, .93);
+  border: 1.5px solid #fff;
+  box-shadow: 0 18px 40px rgba(3, 24, 52, .45);
+  pointer-events: auto;
+}
+.map-empty-card b { display: block; font: 700 15px var(--head); color: #06355e; margin-bottom: 5px; }
+.map-empty-card p { margin: 0 0 12px; font-size: 12px; color: var(--txt2); }
+.map-empty-card .btn { flex: none; padding: 0 16px; }
+
+.map-side {
+  display: flex; flex-direction: column; gap: 10px; min-height: 0;
+}
+.map-box {
+  border-radius: 13px; padding: 10px 12px;
+  background: rgba(255, 255, 255, .74);
+  border: 1px solid rgba(255, 255, 255, .95);
+  box-shadow: 0 4px 12px -4px rgba(8, 76, 142, .16), inset 0 1px 0 #fff;
+}
+.map-box h4 {
+  margin: 0 0 8px; font: 700 11px var(--head); letter-spacing: .09em;
+  text-transform: uppercase; color: #0571c8; display: flex; align-items: center; justify-content: space-between;
+}
+.map-filters { display: flex; flex-wrap: wrap; gap: 5px; }
+.flt {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 8px; border-radius: 8px; cursor: pointer;
+  background: rgba(226, 245, 255, .75); border: 1px solid rgba(18, 114, 192, .25);
+  font: 600 11.5px var(--body); color: var(--txt2);
+}
+.flt input { margin: 0; accent-color: #0078e8; cursor: pointer; }
+
+.inspector { font-size: 12px; color: var(--txt2); }
+.inspector .iname { font: 700 14px var(--head); color: #052e54; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.tag-kind {
+  font: 700 10px var(--head); text-transform: uppercase; padding: 2px 6px; border-radius: 6px;
+}
+.tag-kind.human { background: rgba(0, 168, 255, .18); color: #0369a1; border: 1px solid rgba(2, 132, 199, .35); }
+.tag-kind.bot { background: rgba(249, 115, 22, .18); color: #c2410c; border: 1px solid rgba(234, 88, 12, .35); }
+.bars { display: grid; gap: 5px; margin: 7px 0; }
+.bar-row { display: grid; grid-template-columns: 44px 1fr 34px; align-items: center; gap: 6px; font: 600 11px var(--mono); }
+.bar-track { height: 7px; border-radius: 99px; background: rgba(10, 62, 114, .14); overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 99px; transition: width .2s; }
+.bar-fill.hp { background: linear-gradient(90deg, #16a34a, #4ade80); }
+.bar-fill.sh { background: linear-gradient(90deg, #0284c7, #38bdf8); }
+.imeta { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; font-size: 11.5px; }
+.imeta b { color: var(--txt); font-family: var(--mono); }
+
+.roster-box { flex: 1 1 0; min-height: 120px; display: flex; flex-direction: column; }
+.roster-search {
+  width: 100%; height: 27px; margin-bottom: 7px; padding: 0 9px;
+  border-radius: 8px; border: 1px solid rgba(18, 114, 192, .28);
+  background: rgba(255, 255, 255, .85); color: var(--txt); font: 12px var(--body); outline: none; user-select: text;
+}
+.roster-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.roster-item {
+  display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 7px;
+  padding: 4px 7px; border-radius: 8px; cursor: pointer; font-size: 12px;
+  background: rgba(242, 250, 255, .65); border: 1px solid transparent;
+}
+.roster-item:hover { background: rgba(196, 234, 255, .6); }
+.roster-item.selected { background: rgba(0, 152, 240, .18); border-color: rgba(0, 120, 232, .45); font-weight: 700; }
+.roster-item.dead { opacity: .5; text-decoration: line-through; }
+.roster-item .rdot { width: 8px; height: 8px; border-radius: 50%; }
+.roster-item .rdot.human { background: #00a8ff; box-shadow: 0 0 6px rgba(0, 168, 255, .7); }
+.roster-item .rdot.bot { background: #f97316; }
+.roster-item .rname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--txt); }
+.roster-item .rkills { font: 600 11px var(--mono); color: var(--txt3); }
+
+.feed-box { max-height: 112px; display: flex; flex-direction: column; }
+.feed-list { overflow-y: auto; font: 11px/1.45 var(--mono); color: var(--txt2); display: flex; flex-direction: column; gap: 2px; }
+.feed-list .fe { display: flex; gap: 6px; }
+.feed-list .fe span { color: var(--txt3); flex: none; }
+
 @media (max-width: 1020px) {
   main { grid-template-columns: 1fr; overflow-y: auto; }
   body { overflow: auto; }
   .row2 { grid-template-columns: 1fr; }
 }
+.tp-btn {
+  margin-top: 10px; width: 100%; padding: 8px 12px; border-radius: 10px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,.35); color: #fff; font-weight: 700; font-size: 13px;
+  background: linear-gradient(180deg, #4fb3ff, #1f7fd6); box-shadow: 0 2px 6px rgba(0,0,0,.25);
+}
+.tp-btn:hover { filter: brightness(1.08); }
+.tp-btn:disabled { opacity: .6; cursor: default; }
 </style>
 </head>
 <body>
@@ -961,9 +1199,14 @@ input[type=range]:hover::-webkit-slider-thumb {
     <img class="logo" src="/icon.png" alt="">
     <div class="heading">
       <h1>Fortnite Offline Server</h1>
-      <p><b>PS4 · PC</b> · Season 7 · v7.40 · bots by CoreV2</p>
+      <p><b>PS4 · PC</b> · Season 3 · v3.6 · bots by CoreV2</p>
     </div>
     <div class="spacer"></div>
+    <button class="map-trigger" id="btnLiveMap" title="Abrir mapa táctico en vivo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+      <span id="mapBtnLabel">Mapa en vivo</span>
+      <span class="dot" id="mapDot"></span>
+    </button>
     <div class="pill" id="pill"><span class="led" style="width:10px;height:10px"></span><span id="pillText">Stopped</span><span class="clock" id="clock"></span></div>
   </header>
 
@@ -999,6 +1242,21 @@ input[type=range]:hover::-webkit-slider-thumb {
           <div class="status" id="s-ps4"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-3.9 3.2L2 13.5A3 3 0 0 0 5 17c1 0 1.9-.6 2.4-1.5L8.5 14h7l1.1 1.5A2.9 2.9 0 0 0 19 17a3 3 0 0 0 3-3.5l-.8-5.3A4 4 0 0 0 17.3 5z"/></svg></div><div><div class="name">PS4</div><div class="value">Searching…</div></div><span class="led"></span></div>
           <div class="status" id="s-plugin"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v4"/></svg></div><div><div class="name">PS4 plugin</div><div class="value">Not checked</div></div><span class="led"></span></div>
           <div class="status" id="s-match"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6 6 .9-4.5 4.3 1 6.3L12 16.5 6.5 19.5l1-6.3L3 8.9 9 8z"/></svg></div><div><div class="name">Match server</div><div class="value">—</div></div><span class="led"></span></div>
+        </div>
+        <div class="versions" id="versions" hidden>
+          <span class="versions-label">Version</span>
+          <div class="versions-buttons" id="versionButtons"></div>
+        </div>
+        <div class="versions" id="ps4FovRow">
+          <label class="switch" title="Parche GoldHEN de resolución estirada / FOV para Echo 3.6 en PS4 (se envía por FTP al momento; cierra y abre Echo)">
+            <input type="checkbox" id="ps4FovOn"><i></i><span class="versions-label">PS4 FOV</span>
+          </label>
+          <div class="versions-buttons" id="ps4FovButtons">
+            <button class="btn" data-fov="1440x1080" title="4:3 estirado (64° FOV vertical, 1.33× ancho)">1440×1080</button>
+            <button class="btn" data-fov="1279x1080" title="Pro estirado (70° FOV vertical, 1.50× ancho)">1279×1080</button>
+            <button class="btn" data-fov="1080x1080" title="1:1 ultra estirado (80° FOV vertical, 1.78× ancho)">1080×1080</button>
+            <button class="btn" data-fov="wide112" title="FOV abierto 112° sin deformar (80° vertical)">Wide 112°</button>
+          </div>
         </div>
         <div class="actions">
           <button class="btn" id="btnPrepare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>Prepare PS4</button>
@@ -1088,6 +1346,90 @@ input[type=range]:hover::-webkit-slider-thumb {
     </div>
   </div>
 </div>
+<div class="dialog map-dialog" id="mapDialog">
+  <div class="box">
+    <div class="map-head">
+      <h3>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0078e8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="2.5"/></svg>
+        Mapa Táctico · Temporada 7 (7.40)
+      </h3>
+      <span class="map-badge" id="mapBadge">Esperando partida</span>
+      <div class="spacer"></div>
+      <button class="btn" id="btnMapDemo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span id="btnMapDemoText">Simular partida</span>
+      </button>
+      <button class="btn" id="btnMapFollow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        Seguir
+      </button>
+      <button class="btn" id="btnMapClose">Cerrar</button>
+    </div>
+
+    <div class="map-body">
+      <div class="map-stage" id="mapStage">
+        <canvas id="mapCanvas"></canvas>
+        <div class="map-hud-top">
+          <div class="hud-chip">Fase: <b id="hudPhase">—</b></div>
+          <div class="hud-chip">Vivos: <b id="hudAlive">0</b></div>
+          <div class="hud-chip">Jugadores: <b class="c-human" id="hudHumans">0</b></div>
+          <div class="hud-chip">Bots: <b class="c-bot" id="hudBots">0</b></div>
+          <div class="hud-chip" id="hudStormChip">Tormenta: <b class="c-storm" id="hudStorm">—</b></div>
+        </div>
+        <div class="map-hud-bot">
+          <div class="map-zoom">
+            <button id="mapZoomIn" title="Acercar">+</button>
+            <button id="mapZoomOut" title="Alejar">−</button>
+            <button id="mapZoomReset" title="Reiniciar vista">1:1</button>
+          </div>
+          <div class="map-coords" id="mapCoords">Cuadrícula — · X 0m · Y 0m</div>
+        </div>
+        <div class="map-empty visible" id="mapEmpty">
+          <div class="map-empty-card">
+            <b>Esperando telemetría de partida (CoreV2)</b>
+            <p>Cuando arranque una partida con el parche de telemetría en CoreV2, los jugadores, bots, bus y tormenta aparecerán aquí automáticamente en tiempo real.</p>
+            <button class="btn" id="btnMapDemoEmpty">Probar con partida simulada (51 jugadores)</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="map-side">
+        <div class="map-box">
+          <h4>Capas y filtros</h4>
+          <div class="map-filters">
+            <label class="flt"><input type="checkbox" id="fltHumans" checked>Jugadores</label>
+            <label class="flt"><input type="checkbox" id="fltBots" checked>Bots</label>
+            <label class="flt"><input type="checkbox" id="fltNames" checked>Nombres</label>
+            <label class="flt"><input type="checkbox" id="fltPois" checked>POIs</label>
+            <label class="flt"><input type="checkbox" id="fltStorm" checked>Tormenta</label>
+            <label class="flt"><input type="checkbox" id="fltGrid" checked>A1–J10</label>
+            <label class="flt"><input type="checkbox" id="fltDead">Eliminados</label>
+          </div>
+        </div>
+
+        <div class="map-box">
+          <h4>Inspector <span id="inspSub" style="font-weight:600;color:var(--txt3);text-transform:none;letter-spacing:0">Haz clic en un puntero</span></h4>
+          <div class="inspector" id="inspector">
+            <div style="color:var(--txt3);font-size:12px">Selecciona un jugador o bot en el mapa o en la lista para ver su vida, escudo, eliminaciones y coordenadas.</div>
+          </div>
+          <button class="tp-btn" id="tpBtn" hidden title="Te teletransporta delante del bot seleccionado (cheat teleportto)">TP al bot</button>
+        </div>
+
+        <div class="map-box roster-box">
+          <h4>Jugadores y bots <span id="rosterCount" style="font-family:var(--mono)">0</span></h4>
+          <input class="roster-search" id="rosterSearch" placeholder="Buscar nombre o estilo…" spellcheck="false">
+          <div class="roster-list" id="rosterList"></div>
+        </div>
+
+        <div class="map-box feed-box">
+          <h4>Registro de partida</h4>
+          <div class="feed-list" id="feedList"><div style="color:var(--txt3)">Sin eventos todavía</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toasts" id="toasts"></div>
 <div class="curtain" id="curtain"><div><b>The app has closed</b><span>Close this window and open Fortnite Offline Server again.</span></div></div>
 
@@ -1095,7 +1437,7 @@ input[type=range]:hover::-webkit-slider-thumb {
 const TOKEN = location.hash.slice(1);
 const $ = (id) => document.getElementById(id);
 let lastId = 0, running = false, busy = false, firstTime = true, logs = [], failures = 0;
-let settings = { bots: { count: 50, level: 5, fight_chance: 30, traits: null, mixed: false }, unlock_all: [], lan: false };
+let settings = { bots: { count: 50, level: 5, fight_chance: 30, traits: null, mixed: false }, unlock_all: [], lan: false, ps4_stretched_fov: false, ps4_fov_mode: "AspectRatio_MaintainYFOV" };
 let backendState = "stopped";
 
 async function api(route, body) {
@@ -1244,6 +1586,29 @@ $("lanOn").onchange = async (e) => {
   needsRestart();
 };
 
+/* ---------- PS4 FOV ---------- */
+function drawPs4Fov() {
+  const on = !!settings.ps4_stretched_fov;
+  const mode = settings.ps4_fov_mode || "1440x1080";
+  $("ps4FovOn").checked = on;
+  document.querySelectorAll("#ps4FovButtons .btn").forEach((b) => {
+    b.classList.toggle("active", on && b.dataset.fov === mode);
+    b.style.opacity = on ? "" : "0.55";
+  });
+}
+async function savePs4Fov(changes) {
+  settings = { ...settings, ...changes };
+  drawPs4Fov();
+  try {
+    await api("/api/settings", { ps4_stretched_fov: !!settings.ps4_stretched_fov, ps4_fov_mode: settings.ps4_fov_mode });
+    toast(settings.ps4_stretched_fov ? `PS4 FOV (${settings.ps4_fov_mode}) enviado · reinicia Echo 3.6` : "PS4 FOV desactivado · reinicia Echo 3.6");
+  } catch (err) { toast(err.message, true); }
+}
+$("ps4FovOn").onchange = (e) => savePs4Fov({ ps4_stretched_fov: e.target.checked });
+document.querySelectorAll("#ps4FovButtons .btn").forEach((b) => b.onclick = () => {
+  savePs4Fov({ ps4_stretched_fov: true, ps4_fov_mode: b.dataset.fov });
+});
+
 /* ---------- actions ---------- */
 $("powerButton").onclick = async () => {
   if (busy || backendState === "starting") return;
@@ -1262,6 +1627,35 @@ const restart = async () => {
 };
 $("btnRestart").onclick = restart;
 $("apply").onclick = restart;
+// Version: one button per Fortnite PC build found (and Auto, which follows the game the PS4 opens).
+let versionsShown = "";
+function renderVersions(e) {
+  const versions = e.versions || [];
+  const box = $("versions");
+  box.hidden = versions.length < 2;
+  const active = e.version_auto ? "auto" : e.version;
+  const key = versions.join(",") + "|" + active + "|" + (e.version || "");
+  if (key === versionsShown) return;
+  versionsShown = key;
+  const buttons = $("versionButtons");
+  buttons.textContent = "";
+  for (const v of ["auto", ...versions]) {
+    const b = document.createElement("button");
+    b.className = "btn" + (v === active ? " active" : "");
+    const season = v === "auto" ? "" : ` · S${Math.floor(parseFloat(v))}`;
+    b.textContent = v === "auto" ? `Auto${e.version_auto && e.version ? " (" + e.version + ")" : ""}` : v + season;
+    b.title = v === "auto" ? "The server follows the game the PS4 opens" : `Run the Fortnite ${v} match server and stay on it`;
+    b.onclick = async () => {
+      try {
+        await api("/api/version", { version: v });
+        toast(v === "auto" ? "Version: automatic" : `Switching to Fortnite ${v}…`);
+        versionsShown = "";
+      } catch (err) { toast(err.message, true); }
+    };
+    buttons.appendChild(b);
+  }
+}
+
 $("btnPanel").onclick = () => api("/api/open", { what: "panel" }).catch((e) => toast(e.message, true));
 $("btnFolder").onclick = () => api("/api/open", { what: "folder" }).catch((e) => toast(e.message, true));
 $("btnPrepare").onclick = async () => {
@@ -1318,7 +1712,7 @@ async function refresh() {
     addLogs(e.logs);
     if (firstTime) {
       settings = { ...settings, ...e.settings };
-      drawBots(); drawAccounts(); drawLan(); drawLogs(true);
+      drawBots(); drawAccounts(); drawLan(); drawPs4Fov(); drawLogs(true);
       firstTime = false;
     }
     if (running !== e.running || backendState !== e.backend[0]) busy = false;
@@ -1346,7 +1740,8 @@ async function refresh() {
     status("s-plugin", pl === "pending" ? "" : pl, plText + (e.game === false ? " · Fortnite not installed" : ""));
     if (e.game === false && pl === "ok") $("s-plugin").className = "status warn";
 
-    status("s-match", e.match[0], e.match[1]);
+    status("s-match", e.match[0], e.match[1] + (e.version ? ` · Fortnite ${e.version}` : ""));
+    renderVersions(e);
     $("lanIp").textContent = e.pc_ip ? `${e.pc_ip}:${e.settings.port}` : "—";
     $("btnRestart").disabled = !running;
     $("btnPanel").disabled = be !== "ok";
@@ -1359,6 +1754,965 @@ async function refresh() {
 }
 refresh();
 setInterval(refresh, 700);
+
+/* ==================== LIVE TACTICAL MAP ENGINE ==================== */
+(() => {
+  // The map image (app/ui/map-s7.jpg, the game's own full map from a PS4 screenshot) is exactly the game's A-J x 1-10 grid.
+  // Chapter 1 Season 7 (v7.40) Athena_Terrain bounds: centered at (32256, -25600) with 245760 cm span (480 x 512 cm tiles).
+  const MAP_CENTER_X = 32256, MAP_CENTER_Y = -25600, WORLD_SPAN = 245760;
+  const WORLD_X_MIN = MAP_CENTER_X - WORLD_SPAN / 2, WORLD_X_MAX = MAP_CENTER_X + WORLD_SPAN / 2; // -90624 .. +155136
+  const WORLD_Y_MIN = MAP_CENTER_Y - WORLD_SPAN / 2, WORLD_Y_MAX = MAP_CENTER_Y + WORLD_SPAN / 2; // -148480 .. +97280
+  const GRID_CELL = WORLD_SPAN / 10;
+
+  // Chapter 1 Season 7 (v7.40) Athena POIs in Unreal Engine coordinates (+X = North, +Y = East).
+  const S7_POIS = [
+    { name: "Junk Junction",  x: 132864, y: -106784 },
+    { name: "Haunted Hills",  x: 109568, y: -115712 },
+    { name: "Pleasant Park",  x: 86528,  y: -82432  },
+    { name: "Lazy Links",     x: 104960, y: -19456  },
+    { name: "The Block",      x: 110592, y: 35584   },
+    { name: "Wailing Woods",  x: 83456,  y: 64000   },
+    { name: "Tomato Temple",  x: 76816,  y: 13824   },
+    { name: "Snobby Shores",  x: 49928,  y: -132872 },
+    { name: "Loot Lake",      x: 60416,  y: -36864  },
+    { name: "Tilted Towers",  x: 33792,  y: -58880  },
+    { name: "Dusty Divot",    x: 26496,  y: 7520    },
+    { name: "Retail Row",     x: 24832,  y: 36864   },
+    { name: "Lonely Lodge",   x: 54016,  y: 72704   },
+    { name: "Shifty Shafts",  x: -1024,  y: -59904  },
+    { name: "Salty Springs",  x: 3328,   y: -8192   },
+    { name: "Frosty Flights", x: -26204, y: -125626 },
+    { name: "Polar Peak",     x: -20163, y: -88496  },
+    { name: "Fatal Fields",   x: -38912, y: 8704    },
+    { name: "Paradise Palms", x: -28416, y: 55296   },
+    { name: "Happy Hamlet",   x: -58914, y: -71566  },
+    { name: "Lucky Landing",  x: -71314, y: -7243   }
+  ];
+
+  // World (X=North, Y=East) <-> Normalized map UV [0..1]
+  const worldToUv = (x, y) => [
+    (y - WORLD_Y_MIN) / WORLD_SPAN,
+    1 - (x - WORLD_X_MIN) / WORLD_SPAN
+  ];
+  const uvToWorld = (u, v) => [
+    WORLD_X_MIN + (1 - v) * WORLD_SPAN,
+    WORLD_Y_MIN + u * WORLD_SPAN
+  ];
+  const worldToGrid = (x, y) => {
+    const col = Math.floor((y - WORLD_Y_MIN) / GRID_CELL);
+    const row = Math.floor((WORLD_X_MAX - x) / GRID_CELL);
+    if (col < 0 || col > 9 || row < 0 || row > 9) return "Mar";
+    return "ABCDEFGHIJ"[col] + (row + 1);
+  };
+
+  // Build cached 1024x1024 Season 7 Athena topographical map (used when no custom /map-s7.jpg is placed in app/ui/).
+  const MAP_SIZE = 1024;
+  let customMapImg = null;
+  for (const src of ["/map-s7.jpg", "/map-s7.png"]) {
+    const img = new Image();
+    img.onload = () => { if (!customMapImg) customMapImg = img; };
+    img.src = src;
+  }
+
+  function buildSeason7Canvas() {
+    const c = document.createElement("canvas");
+    c.width = MAP_SIZE; c.height = MAP_SIZE;
+    const g = c.getContext("2d");
+    const pt = (x, y) => [((y + 125000) / 250000) * MAP_SIZE, (1 - (x + 125000) / 250000) * MAP_SIZE];
+    const poly = (pts) => {
+      g.beginPath();
+      pts.forEach(([x, y], i) => {
+        const [px, py] = pt(x, y);
+        i ? g.lineTo(px, py) : g.moveTo(px, py);
+      });
+      g.closePath();
+    };
+
+    // Deep ocean backdrop
+    const sea = g.createRadialGradient(512, 512, 180, 512, 512, 700);
+    sea.addColorStop(0, "#155a8a");
+    sea.addColorStop(0.65, "#0d3e66");
+    sea.addColorStop(1, "#07233d");
+    g.fillStyle = sea;
+    g.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
+
+    // Chapter 1 Season 7 island outline (expanded SW iceberg peninsula + classic coast)
+    const island = [
+      [118000, -84000], [116000, -45000], [108000, -10000], [108000, 35000], [104000, 74000],
+      [88000, 102000], [55000, 112000], [12000, 114000], [-28000, 108000], [-62000, 108000],
+      [-94000, 96000], [-108000, 62000], [-118000, 22000], [-112000, -12000],
+      [-114000, -48000], [-106000, -82000], [-74000, -110000], [-36000, -116000],
+      [-14000, -104000], [20000, -116000], [64000, -106000], [98000, -98000]
+    ];
+
+    // Coastal shallows halo
+    g.save();
+    poly(island);
+    g.lineJoin = "round";
+    g.lineWidth = 28;
+    g.strokeStyle = "rgba(56, 189, 248, 0.25)";
+    g.stroke();
+    g.lineWidth = 11;
+    g.strokeStyle = "rgba(186, 230, 253, 0.35)";
+    g.stroke();
+
+    // Base grass terrain
+    poly(island);
+    const land = g.createLinearGradient(120, 120, 900, 900);
+    land.addColorStop(0, "#5c8d45");
+    land.addColorStop(0.5, "#689b49");
+    land.addColorStop(1, "#4f7d3b");
+    g.fillStyle = land;
+    g.fill();
+
+    // Clip all biomes & terrain features to island coast
+    g.clip();
+
+    // Subtle topographical elevation hills
+    const hills = [
+      [58000, -18000, 34000, "rgba(255,255,255,0.06)"],
+      [34000, 54000, 38000, "rgba(255,255,255,0.05)"],
+      [-12000, -68000, 32000, "rgba(0,0,0,0.07)"],
+      [-40000, 44000, 26000, "rgba(255,255,255,0.06)"],
+      [70000, -62000, 28000, "rgba(0,0,0,0.06)"]
+    ];
+    for (const [hx, hy, hr, col] of hills) {
+      const [px, py] = pt(hx, hy);
+      const rr = (hr / WORLD_SPAN) * MAP_SIZE;
+      const gr = g.createRadialGradient(px, py, 2, px, py, rr);
+      gr.addColorStop(0, col); gr.addColorStop(1, "transparent");
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(px, py, rr, 0, Math.PI * 2); g.fill();
+    }
+
+    // Forest patches (Wailing Woods, Lonely Lodge, Dusty Divot)
+    const forests = [[56000, 88000, 28000], [10000, 98000, 22000], [-6000, 26000, 16000]];
+    for (const [fx, fy, fr] of forests) {
+      const [px, py] = pt(fx, fy);
+      const rr = (fr / WORLD_SPAN) * MAP_SIZE;
+      g.fillStyle = "rgba(32, 74, 34, 0.55)";
+      g.beginPath(); g.arc(px, py, rr, 0, Math.PI * 2); g.fill();
+    }
+
+    // Season 7 SW Snow Iceberg Biome (Frosty Flights, Polar Peak, Happy Hamlet, Frozen Greasy)
+    const snowBiome = [
+      [-14000, -118000], [-16000, -64000], [-28000, -48000], [-48000, -42000],
+      [-64000, -24000], [-88000, -16000], [-122000, -14000], [-122000, -122000]
+    ];
+    poly(snowBiome);
+    const snowGrad = g.createLinearGradient(120, 560, 480, 940);
+    snowGrad.addColorStop(0, "#e6f4fc");
+    snowGrad.addColorStop(0.55, "#d2eaf7");
+    snowGrad.addColorStop(1, "#b8dcf0");
+    g.fillStyle = snowGrad;
+    g.fill();
+    g.lineWidth = 4; g.strokeStyle = "rgba(255,255,255,0.6)"; g.stroke();
+
+    // Polar Peak glacial ridge + frozen Greasy Grove lake
+    {
+      const [px, py] = pt(-62000, -64000);
+      const gr = g.createRadialGradient(px, py, 4, px, py, 56);
+      gr.addColorStop(0, "#ffffff"); gr.addColorStop(0.6, "rgba(180,224,248,0.65)"); gr.addColorStop(1, "transparent");
+      g.fillStyle = gr; g.beginPath(); g.arc(px, py, 56, 0, Math.PI * 2); g.fill();
+      const [gx, gy] = pt(-34000, -68000);
+      g.fillStyle = "rgba(125, 211, 252, 0.55)";
+      g.beginPath(); g.ellipse(gx, gy, 24, 17, -0.3, 0, Math.PI * 2); g.fill();
+    }
+
+    // Season 7 SE Desert Biome (Paradise Palms)
+    const desertBiome = [
+      [-34000, 118000], [-36000, 74000], [-52000, 56000], [-84000, 48000],
+      [-118000, 54000], [-118000, 118000]
+    ];
+    poly(desertBiome);
+    const desGrad = g.createLinearGradient(680, 620, 960, 940);
+    desGrad.addColorStop(0, "#d9a964");
+    desGrad.addColorStop(0.6, "#c9924b");
+    desGrad.addColorStop(1, "#b47c3c");
+    g.fillStyle = desGrad;
+    g.fill();
+
+    // River from north -> Loot Lake -> south to Lucky Landing
+    const river = [
+      [112000, 6000], [82000, -4000], [46000, -10000], [24000, -16000],
+      [-6000, -14000], [-36000, -16000], [-68000, -8000], [-98000, 6000], [-118000, 14000]
+    ];
+    g.beginPath();
+    river.forEach(([x, y], i) => { const [px, py] = pt(x, y); i ? g.lineTo(px, py) : g.moveTo(px, py); });
+    g.lineCap = "round"; g.lineJoin = "round";
+    g.lineWidth = 11; g.strokeStyle = "#2980b9"; g.stroke();
+    g.lineWidth = 5; g.strokeStyle = "#48a9e6"; g.stroke();
+
+    // Loot Lake + central island
+    {
+      const [lx, ly] = pt(24000, -16000);
+      g.fillStyle = "#247bb5";
+      g.beginPath(); g.ellipse(lx, ly, 46, 36, 0.25, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#5d9247";
+      g.beginPath(); g.arc(lx + 2, ly - 1, 13, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "rgba(186,230,253,0.45)";
+      g.beginPath(); g.arc(lx + 2, ly - 1, 4, 0, Math.PI * 2); g.fill();
+    }
+
+    // Dusty Divot crater ring
+    {
+      const [dx, dy] = pt(-6000, 26000);
+      g.strokeStyle = "rgba(75, 58, 42, 0.65)"; g.lineWidth = 5;
+      g.beginPath(); g.ellipse(dx, dy, 32, 24, 0.15, 0, Math.PI * 2); g.stroke();
+    }
+
+    // Major road network
+    const roads = [
+      [[52000, -52000], [24000, -44000], [-14000, -36000], [-42000, 12000], [-22000, 66000]],
+      [[-42000, 12000], [-78000, 22000], [-112000, 18000]],
+      [[-42000, 12000], [-64000, 82000]],
+      [[52000, -52000], [79000, 12000], [56000, 88000]],
+      [[-14000, -36000], [-44000, -36000], [-62000, -64000], [-46000, -98000]]
+    ];
+    g.strokeStyle = "rgba(218, 206, 178, 0.42)";
+    g.lineWidth = 2.6;
+    for (const r of roads) {
+      g.beginPath();
+      r.forEach(([x, y], i) => { const [px, py] = pt(x, y); i ? g.lineTo(px, py) : g.moveTo(px, py); });
+      g.stroke();
+    }
+
+    // Subtle city blocks at major towns
+    for (const [cx, cy, s] of [[-14000, -36000, 16], [52000, -52000, 14], [-22000, 66000, 14], [-64000, 82000, 13], [-102000, -46000, 11]]) {
+      const [px, py] = pt(cx, cy);
+      g.fillStyle = "rgba(45, 55, 72, 0.38)";
+      g.fillRect(px - s, py - s * 0.7, s * 2, s * 1.4);
+    }
+    g.restore();
+
+    // Crisp coastline outline
+    poly(island);
+    g.lineWidth = 2.5;
+    g.strokeStyle = "rgba(255, 255, 255, 0.45)";
+    g.stroke();
+    return c;
+  }
+  const baseMapCanvas = buildSeason7Canvas();
+
+  // Viewport & interaction state
+  let mapOpen = false, demoMode = false, followMode = false;
+  let zoom = 1, panX = 0, panY = 0;
+  let dragging = false, dragStartX = 0, dragStartY = 0, dragPanX = 0, dragPanY = 0, dragMoved = false;
+  let selectedId = null, hoveredId = null;
+  let liveData = null, liveEvents = [], lastLiveActive = false;
+  let smoothPos = new Map(); // id -> {x, y, yaw}
+
+  const canvas = $("mapCanvas");
+  const ctx = canvas.getContext("2d");
+  const stage = $("mapStage");
+
+  function resizeCanvas() {
+    const r = stage.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (r.width > 0 && r.height > 0) {
+      canvas.width = Math.round(r.width * dpr);
+      canvas.height = Math.round(r.height * dpr);
+    }
+  }
+  window.addEventListener("resize", () => { if (mapOpen) resizeCanvas(); });
+
+  function getMapRect() {
+    const w = canvas.width, h = canvas.height;
+    const size = Math.min(w, h) * zoom;
+    const left = (w - size) / 2 + panX;
+    const top = (h - size) / 2 + panY;
+    return { left, top, size };
+  }
+  function worldToScreen(x, y) {
+    const [u, v] = worldToUv(x, y);
+    const { left, top, size } = getMapRect();
+    return [left + u * size, top + v * size];
+  }
+  function screenToWorld(sx, sy) {
+    const { left, top, size } = getMapRect();
+    return uvToWorld((sx - left) / size, (sy - top) / size);
+  }
+  function clampPan() {
+    const limit = Math.max(canvas.width, canvas.height) * 0.48 * zoom;
+    panX = Math.max(-limit, Math.min(limit, panX));
+    panY = Math.max(-limit, Math.min(limit, panY));
+  }
+
+  /* ---------- realistic Season 7 demo match simulation ---------- */
+  const BOT_NAMES = [
+    "OG_Tilted", "ShadowFox_74", "PolarSniper", "FrostyBot99", "SweatBuilder", "LootLlama_X", "SilentStorm",
+    "BlazeRunner", "PixelKnight", "TurboRamp", "ArcticWolf", "SlurpKing", "ChugMaster", "PumpShotty",
+    "TiltedTom", "PleasantPro", "RetailRaider", "DivotDiver", "SnobbyGhost", "HamletHero", "LuckyShot",
+    "WailingWisp", "LazyLooter", "FatalFury", "SaltySam", "ShiftySneak", "DustyDrift", "CuddleBot",
+    "Raptor_AI", "DriftV7", "Lynx_740", "IceKingBot", "ZenithAI", "Onesie_GG", "TrogSmash", "SgtWinter",
+    "PowderPeak", "CobaltOps", "Crank90s", "BoxFighter", "StormRunner", "BushCamper", "ZoneWarsAI",
+    "HighGround", "EditMaster", "MiniShield", "GoldScar", "BoogieBot", "PlanePilot", "RiftJumper"
+  ];
+  const BOT_STYLES = ["rusher", "builder", "looter", "camper", "balanced"];
+  let sim = null;
+
+  function startDemo() {
+    const count = Math.max(10, Math.min(99, settings.bots?.count ?? 50));
+    const angle = Math.random() * Math.PI * 2;
+    const busStart = { x: MAP_CENTER_X + Math.cos(angle) * 120000, y: MAP_CENTER_Y + Math.sin(angle) * 120000 };
+    const busEnd = { x: MAP_CENTER_X - Math.cos(angle) * 120000, y: MAP_CENTER_Y - Math.sin(angle) * 120000 };
+    const busYaw = Math.atan2(busEnd.y - busStart.y, busEnd.x - busStart.x) * 180 / Math.PI;
+    const actors = [];
+    const pickPoi = () => S7_POIS[Math.floor(Math.random() * S7_POIS.length)];
+    // Human player
+    const hpPoi = S7_POIS[9]; // Tilted Towers
+    actors.push({
+      id: "human-1", name: (settings.unlock_all?.[0] || "PS4Player"), isBot: false,
+      x: busStart.x, y: busStart.y, z: 32000, yaw: busYaw,
+      hp: 100, maxHp: 100, shield: 50, maxShield: 100, alive: true, dbno: false, kills: 0, team: 2,
+      state: "InAircraft", goal: "Drop", style: "player",
+      target: { x: hpPoi.x + (Math.random() - .5) * 9000, y: hpPoi.y + (Math.random() - .5) * 9000 },
+      jumpAt: 0.25 + Math.random() * 0.35
+    });
+    for (let i = 0; i < count; i++) {
+      const p = pickPoi();
+      actors.push({
+        id: "bot-" + i, name: BOT_NAMES[i % BOT_NAMES.length] + (i >= BOT_NAMES.length ? "_" + i : ""), isBot: true,
+        x: busStart.x, y: busStart.y, z: 32000, yaw: busYaw,
+        hp: 100, maxHp: 100, shield: Math.random() < .5 ? 50 : 0, maxShield: 100,
+        alive: true, dbno: false, kills: 0, team: 3 + i,
+        state: "InAircraft", goal: "Loot", style: BOT_STYLES[i % BOT_STYLES.length],
+        target: { x: p.x + (Math.random() - .5) * 14000, y: p.y + (Math.random() - .5) * 14000 },
+        jumpAt: 0.12 + Math.random() * 0.72
+      });
+    }
+    sim = {
+      t: 0, busStart, busEnd, busYaw,
+      stormPhase: 0,
+      storm: { phase: 1, x: MAP_CENTER_X, y: MAP_CENTER_Y, radius: 130000, nextX: MAP_CENTER_X + (Math.random() - .5) * 52000, nextY: MAP_CENTER_Y + (Math.random() - .5) * 52000, nextRadius: 68000 },
+      actors, events: [{ t: new Date().toTimeString().slice(0, 8), type: "info", text: "Autobús de batalla en vuelo (Demo)" }]
+    };
+    selectedId = "human-1";
+    demoMode = true;
+    $("btnMapDemo").classList.add("active");
+    $("btnMapDemoText").textContent = "Detener demo";
+    $("mapEmpty").classList.remove("visible");
+  }
+
+  function stopDemo() {
+    demoMode = false;
+    sim = null;
+    $("btnMapDemo").classList.remove("active");
+    $("btnMapDemoText").textContent = "Simular partida";
+  }
+
+  function stepDemo(dt) {
+    if (!sim) return null;
+    sim.t += dt;
+    const busDuration = 16;
+    const busProg = Math.min(1, sim.t / busDuration);
+    const inBus = sim.t < busDuration;
+    const busX = sim.busStart.x + (sim.busEnd.x - sim.busStart.x) * busProg;
+    const busY = sim.busStart.y + (sim.busEnd.y - sim.busStart.y) * busProg;
+
+    // Storm shrinking stages after bus
+    let phase = inBus ? "Aircraft" : "SafeZones";
+    let phaseStep = inBus ? "BusFlying" : "StormShrinking";
+    const st = sim.storm;
+    if (!inBus) {
+      const shrinkSpeed = 2400 * dt;
+      if (st.radius > st.nextRadius) {
+        const frac = Math.min(1, shrinkSpeed / Math.max(1, st.radius - st.nextRadius));
+        st.radius = Math.max(st.nextRadius, st.radius - shrinkSpeed);
+        st.x += (st.nextX - st.x) * frac;
+        st.y += (st.nextY - st.y) * frac;
+      } else if (st.nextRadius > 4500) {
+        st.phase++;
+        st.nextRadius = Math.max(3500, st.radius * 0.52);
+        const shift = (st.radius - st.nextRadius) * 0.65;
+        const a = Math.random() * Math.PI * 2;
+        st.nextX = st.x + Math.cos(a) * shift;
+        st.nextY = st.y + Math.sin(a) * shift;
+        sim.events.push({ t: new Date().toTimeString().slice(0, 8), type: "info", text: `Tormenta Fase ${st.phase} cerrándose` });
+      }
+    }
+
+    const aliveList = sim.actors.filter((a) => a.alive);
+    if (aliveList.length <= 1) { phase = "EndGame"; phaseStep = "EndGame"; }
+
+    for (const a of aliveList) {
+      if (a.state === "InAircraft") {
+        a.x = busX; a.y = busY; a.yaw = sim.busYaw;
+        if (busProg >= a.jumpAt) { a.state = "Skydiving"; a.goal = "Drop"; }
+        continue;
+      }
+      if (a.state === "Skydiving") {
+        const dx = a.target.x - a.x, dy = a.target.y - a.y, dist = Math.hypot(dx, dy);
+        const spd = 7200 * dt;
+        a.z = Math.max(500, a.z - 2200 * dt);
+        if (dist < spd + 1200) { a.state = "Landed"; a.z = 400; a.goal = "Loot"; }
+        else {
+          a.x += (dx / dist) * spd; a.y += (dy / dist) * spd;
+          a.yaw = Math.atan2(dy, dx) * 180 / Math.PI;
+        }
+        continue;
+      }
+      // Landed movement: rotate inside next safe zone or wander/hunt
+      const distNext = Math.hypot(a.x - st.nextX, a.y - st.nextY);
+      if (distNext > st.nextRadius * 0.88) {
+        a.goal = "Storm";
+        a.target = { x: st.nextX + (Math.random() - .5) * st.nextRadius * 0.7, y: st.nextY + (Math.random() - .5) * st.nextRadius * 0.7 };
+      } else if (Math.hypot(a.target.x - a.x, a.target.y - a.y) < 2500) {
+        const rad = Math.min(st.nextRadius * 0.85, 22000);
+        const ang = Math.random() * Math.PI * 2;
+        a.target = { x: st.nextX + Math.cos(ang) * rad * Math.random(), y: st.nextY + Math.sin(ang) * rad * Math.random() };
+        a.goal = a.isBot ? (Math.random() < .45 ? "Hunt" : Math.random() < .5 ? "Loot" : "Wander") : "Moving";
+      }
+      const dx = a.target.x - a.x, dy = a.target.y - a.y, dist = Math.hypot(dx, dy);
+      const spd = (a.isBot ? 1650 : 2100) * dt;
+      if (dist > 100) {
+        a.x += (dx / dist) * Math.min(spd, dist);
+        a.y += (dy / dist) * Math.min(spd, dist);
+        a.yaw = Math.atan2(dy, dx) * 180 / Math.PI;
+      }
+      // Storm damage
+      if (!inBus && Math.hypot(a.x - st.x, a.y - st.y) > st.radius) {
+        a.hp -= (st.phase * 2.2) * dt;
+        if (a.hp <= 0) {
+          a.hp = 0; a.alive = false; a.state = "Dead";
+          sim.events.push({ t: new Date().toTimeString().slice(0, 8), type: "elim", text: `${a.name} cayó en la tormenta` });
+        }
+      }
+    }
+
+    // Skirmishes between close landed actors
+    if (!inBus && aliveList.length > 1 && Math.random() < dt * 2.4) {
+      const landed = aliveList.filter((a) => a.alive && a.state === "Landed");
+      for (let i = 0; i < landed.length; i++) {
+        const a = landed[i];
+        for (let j = i + 1; j < landed.length; j++) {
+          const b = landed[j];
+          if (Math.hypot(a.x - b.x, a.y - b.y) < 5500) {
+            const aWins = !a.isBot ? Math.random() < 0.78 : (!b.isBot ? Math.random() < 0.22 : Math.random() < 0.5);
+            const win = aWins ? a : b, lose = aWins ? b : a;
+            const dmg = 26 + Math.random() * 42;
+            if (lose.shield > 0) { const s = Math.min(lose.shield, dmg); lose.shield -= s; lose.hp -= (dmg - s); }
+            else lose.hp -= dmg;
+            win.yaw = Math.atan2(lose.y - win.y, lose.x - win.x) * 180 / Math.PI;
+            if (lose.hp <= 0) {
+              lose.hp = 0; lose.alive = false; lose.state = "Dead"; win.kills++;
+              sim.events.push({ t: new Date().toTimeString().slice(0, 8), type: "kill", text: `${win.name} eliminó a ${lose.name}` });
+            }
+            break;
+          }
+        }
+      }
+    }
+    if (sim.events.length > 35) sim.events = sim.events.slice(-35);
+
+    return {
+      phase, phaseStep,
+      timeRemaining: inBus ? Math.max(0, busDuration - sim.t) : Math.max(0, (st.radius - st.nextRadius) / 2400),
+      playersLeft: sim.actors.filter((a) => a.alive).length,
+      totalPlayers: sim.actors.length,
+      storm: st,
+      bus: inBus ? { x: busX, y: busY, yaw: sim.busYaw, startX: sim.busStart.x, startY: sim.busStart.y, endX: sim.busEnd.x, endY: sim.busEnd.y } : null,
+      pois: S7_POIS,
+      actors: sim.actors
+    };
+  }
+
+  /* ---------- drawing ---------- */
+  function activeTelemetry() {
+    if (lastLiveActive && liveData) return { source: "live", data: liveData, events: liveEvents };
+    if (demoMode && sim) return { source: "demo", data: sim.lastSnap, events: sim.events };
+    return { source: "idle", data: liveData, events: liveEvents };
+  }
+
+  function drawPointer(sx, sy, yawDeg, isHuman, isSelected, isDead, isDbno, label, hp, shield, showName) {
+    ctx.save();
+    ctx.translate(sx, sy);
+    if (isDead) {
+      ctx.strokeStyle = "rgba(220, 232, 245, 0.55)";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(-4, -4); ctx.lineTo(4, 4); ctx.moveTo(4, -4); ctx.lineTo(-4, 4); ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    const rad = (yawDeg - 90) * Math.PI / 180;
+    const sz = isHuman ? 9.5 : 6.8;
+
+    // Selection crosshair + view cone
+    if (isSelected) {
+      ctx.save();
+      ctx.rotate(rad);
+      const cone = ctx.createRadialGradient(0, 0, 2, 0, 0, 46);
+      cone.addColorStop(0, isHuman ? "rgba(56, 232, 255, 0.38)" : "rgba(255, 146, 87, 0.34)");
+      cone.addColorStop(1, "transparent");
+      ctx.fillStyle = cone;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 46, -0.45, 0.45); ctx.closePath(); ctx.fill();
+      ctx.restore();
+
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, sz + 7, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // Human glow or DBNO pulse
+    if (isHuman) {
+      ctx.fillStyle = "rgba(0, 212, 255, 0.28)";
+      ctx.beginPath(); ctx.arc(0, 0, sz + 5, 0, Math.PI * 2); ctx.fill();
+    } else if (isDbno) {
+      ctx.strokeStyle = "#facc15";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, sz + 4, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // Directional chevron pointer
+    ctx.save();
+    ctx.rotate(rad);
+    ctx.beginPath();
+    ctx.moveTo(sz * 1.25, 0);
+    ctx.lineTo(-sz * 0.85, -sz * 0.78);
+    ctx.lineTo(-sz * 0.42, 0);
+    ctx.lineTo(-sz * 0.85, sz * 0.78);
+    ctx.closePath();
+    ctx.fillStyle = isDbno ? "#facc15" : (isHuman ? "#22e3ff" : "#ff7034");
+    ctx.fill();
+    ctx.lineWidth = isHuman ? 1.8 : 1.3;
+    ctx.strokeStyle = isHuman ? "#ffffff" : "#220c04";
+    ctx.stroke();
+    ctx.restore();
+
+    // Name tag + mini HP bar for humans or selected actor
+    if (showName && (isHuman || isSelected || zoom >= 2.2)) {
+      ctx.font = (isHuman ? "700 11px " : "600 10px ") + '"Segoe UI", sans-serif';
+      const tw = ctx.measureText(label).width;
+      const bx = -tw / 2 - 5, by = -sz - 22;
+      ctx.fillStyle = isHuman ? "rgba(4, 34, 66, 0.86)" : "rgba(28, 16, 10, 0.78)";
+      ctx.beginPath();
+      ctx.roundRect(bx, by, tw + 10, 16, 5);
+      ctx.fill();
+      ctx.strokeStyle = isHuman ? "rgba(56, 232, 255, 0.7)" : "rgba(255, 146, 87, 0.5)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = isHuman ? "#e0faff" : "#ffedd5";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(label, 0, by + 8.5);
+      if (isHuman || isSelected) {
+        const bw = 28;
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(-bw / 2, sz + 4, bw, 4);
+        ctx.fillStyle = "#22c55e";
+        ctx.fillRect(-bw / 2, sz + 4, bw * Math.max(0, Math.min(1, hp / 100)), 4);
+        if (shield > 0) {
+          ctx.fillStyle = "#38bdf8";
+          ctx.fillRect(-bw / 2, sz + 8.5, bw * Math.max(0, Math.min(1, shield / 100)), 2.5);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  let lastFrame = performance.now();
+  let lastUiUpdate = 0;
+
+  function resolveActorPos(a, data) {
+    // CoreV2 reports human players as (0, 0) while inside the Battle Bus (Pawn == null): place them on the bus.
+    if (a.state === "InAircraft" && a.x === 0 && a.y === 0) {
+      if (data?.bus && (data.bus.x || data.bus.y)) {
+        return { x: data.bus.x, y: data.bus.y, yaw: data.bus.yaw ?? 0, hidden: false };
+      }
+      return { x: 0, y: 0, yaw: 0, hidden: true };
+    }
+    return { x: a.x, y: a.y, yaw: a.yaw ?? 0, hidden: false };
+  }
+
+  function renderMap(now) {
+    if (!mapOpen) return;
+    requestAnimationFrame(renderMap);
+    const dt = Math.min(0.1, (now - lastFrame) / 1000);
+    lastFrame = now;
+
+    if (demoMode && sim && !lastLiveActive) {
+      sim.lastSnap = stepDemo(dt);
+    }
+
+    const { source, data, events } = activeTelemetry();
+    const actors = data?.actors ?? [];
+
+    // Smooth interpolation for live telemetry
+    for (const a of actors) {
+      const k = a.id || a.name;
+      const pos = resolveActorPos(a, data);
+      if (pos.hidden) { smoothPos.delete(k); continue; }
+      const cur = smoothPos.get(k);
+      if (!cur || source === "demo" || Math.hypot(pos.x - cur.x, pos.y - cur.y) > 20000) {
+        smoothPos.set(k, { x: pos.x, y: pos.y, yaw: pos.yaw });
+      } else {
+        const alpha = Math.min(1, dt * 8);
+        cur.x += (pos.x - cur.x) * alpha;
+        cur.y += (pos.y - cur.y) * alpha;
+        let dyaw = (pos.yaw - cur.yaw + 540) % 360 - 180;
+        cur.yaw += dyaw * alpha;
+      }
+    }
+
+    // Camera follow
+    if (followMode && selectedId) {
+      const target = actors.find((a) => (a.id || a.name) === selectedId);
+      if (target) {
+        const p = smoothPos.get(selectedId) || resolveActorPos(target, data);
+        if (!p.hidden) {
+          const [u, v] = worldToUv(p.x, p.y);
+          const size = Math.min(canvas.width, canvas.height) * zoom;
+          panX = (0.5 - u) * size;
+          panY = (0.5 - v) * size;
+          clampPan();
+        }
+      }
+    }
+
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#061d34";
+    ctx.fillRect(0, 0, w, h);
+
+    const rect = getMapRect();
+    ctx.drawImage(customMapImg || baseMapCanvas, rect.left, rect.top, rect.size, rect.size);
+
+    // A1-J10 grid
+    if ($("fltGrid").checked) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+      ctx.lineWidth = 1;
+      ctx.font = '700 10px "Cascadia Mono", Consolas, monospace';
+      ctx.fillStyle = "rgba(235, 248, 255, 0.58)";
+      const [leftEdge] = worldToScreen(MAP_CENTER_X, WORLD_Y_MIN);
+      const [rightEdge] = worldToScreen(MAP_CENTER_X, WORLD_Y_MAX);
+      const [, topEdge] = worldToScreen(WORLD_X_MAX, MAP_CENTER_Y);
+      const [, botEdge] = worldToScreen(WORLD_X_MIN, MAP_CENTER_Y);
+      for (let i = 0; i <= 10; i++) {
+        const [gx] = worldToScreen(MAP_CENTER_X, WORLD_Y_MIN + i * GRID_CELL);
+        const [, gy] = worldToScreen(WORLD_X_MAX - i * GRID_CELL, MAP_CENTER_Y);
+        ctx.beginPath(); ctx.moveTo(gx, topEdge); ctx.lineTo(gx, botEdge); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(leftEdge, gy); ctx.lineTo(rightEdge, gy); ctx.stroke();
+        if (i < 10) {
+          const [cx] = worldToScreen(MAP_CENTER_X, WORLD_Y_MIN + (i + 0.5) * GRID_CELL);
+          const [, cy] = worldToScreen(WORLD_X_MAX - (i + 0.5) * GRID_CELL, MAP_CENTER_Y);
+          ctx.textAlign = "center"; ctx.fillText("ABCDEFGHIJ"[i], cx, topEdge + 12);
+          ctx.textAlign = "left"; ctx.fillText(String(i + 1), leftEdge + 5, cy + 3);
+        }
+      }
+      ctx.restore();
+    }
+
+    // POIs
+    if ($("fltPois").checked) {
+      // The real map image has the game's own place names: only named match POIs (skip "chests at ...") go over it.
+      const pois = data?.pois?.length
+        ? data.pois.filter((p) => p.name && !p.name.startsWith("chests at "))
+        : (customMapImg ? [] : S7_POIS);
+      ctx.save();
+      ctx.font = '700 10.5px "Segoe UI", sans-serif';
+      ctx.textAlign = "center";
+      for (const p of pois) {
+        const [px, py] = worldToScreen(p.x, p.y);
+        ctx.fillStyle = "rgba(4, 22, 42, 0.72)";
+        ctx.fillText(p.name.toUpperCase(), px + 1, py + 1);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.fillText(p.name.toUpperCase(), px, py);
+      }
+      ctx.restore();
+    }
+
+    // Storm circles
+    if ($("fltStorm").checked && data?.storm) {
+      const st = data.storm;
+      const pxPerCm = rect.size / WORLD_SPAN;
+      if (st.radius > 0) {
+        const [sx, sy] = worldToScreen(st.x, st.y);
+        const sr = st.radius * pxPerCm;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(rect.left, rect.top, rect.size, rect.size);
+        ctx.arc(sx, sy, sr, 0, Math.PI * 2, true);
+        ctx.fillStyle = "rgba(139, 44, 226, 0.30)";
+        ctx.fill("evenodd");
+        ctx.strokeStyle = "#d946ef";
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "#c026d3"; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+      if (st.nextRadius > 0) {
+        const [nx, ny] = worldToScreen(st.nextX, st.nextY);
+        const nr = st.nextRadius * pxPerCm;
+        ctx.save();
+        ctx.setLineDash([6, 5]);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.88)";
+        ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.arc(nx, ny, nr, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // Battle Bus path & icon
+    if (data?.bus && (data.bus.x || data.bus.y)) {
+      const b = data.bus;
+      ctx.save();
+      if (b.startX !== undefined && b.endX !== undefined) {
+        const [x1, y1] = worldToScreen(b.startX, b.startY);
+        const [x2, y2] = worldToScreen(b.endX, b.endY);
+        ctx.setLineDash([8, 6]);
+        ctx.strokeStyle = "rgba(125, 211, 252, 0.78)";
+        ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      const [bx, by] = worldToScreen(b.x, b.y);
+      ctx.translate(bx, by);
+      ctx.rotate(((b.yaw ?? 0) - 90) * Math.PI / 180);
+      ctx.fillStyle = "#0ea5e9";
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(-11, -6, 22, 12, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#bae6fd";
+      ctx.fillRect(3, -4, 5, 8);
+      ctx.restore();
+    }
+
+    // Actors: bots first, then humans on top
+    const showHumans = $("fltHumans").checked;
+    const showBots = $("fltBots").checked;
+    const showNames = $("fltNames").checked;
+    const showDead = $("fltDead").checked;
+    const sorted = [...actors].sort((a, b) => Number(!a.isBot) - Number(!b.isBot));
+    for (const a of sorted) {
+      if (!a.alive && !showDead) continue;
+      if (a.isBot && !showBots) continue;
+      if (!a.isBot && !showHumans) continue;
+      const k = a.id || a.name;
+      const p = smoothPos.get(k) || resolveActorPos(a, data);
+      if (p.hidden) continue;
+      const [sx, sy] = worldToScreen(p.x, p.y);
+      drawPointer(sx, sy, p.yaw ?? 0, !a.isBot, k === selectedId || k === hoveredId, !a.alive, !!a.dbno, a.name || k, a.hp ?? 100, a.shield ?? 0, showNames);
+    }
+
+    // Throttle DOM sidebar updates to ~4 Hz
+    if (now - lastUiUpdate > 240) {
+      lastUiUpdate = now;
+      updateMapSidebar(source, data, events);
+    }
+  }
+
+  function updateMapSidebar(source, data, events) {
+    const badge = $("mapBadge");
+    if (source === "live") { badge.className = "map-badge live"; badge.textContent = "En vivo · CoreV2"; }
+    else if (source === "demo") { badge.className = "map-badge demo"; badge.textContent = "Demo · Simulación"; }
+    else { badge.className = "map-badge"; badge.textContent = "Esperando partida"; }
+    $("mapEmpty").classList.toggle("visible", source === "idle");
+
+    const actors = data?.actors ?? [];
+    const aliveHumans = actors.filter((a) => !a.isBot && a.alive).length;
+    const aliveBots = actors.filter((a) => a.isBot && a.alive).length;
+    $("hudPhase").textContent = data ? (data.phaseStep || data.phase || "—") : "—";
+    $("hudAlive").textContent = data ? (data.playersLeft ?? (aliveHumans + aliveBots)) : 0;
+    $("hudHumans").textContent = aliveHumans;
+    $("hudBots").textContent = aliveBots;
+    $("hudStorm").textContent = data?.storm?.phase ? `Fase ${data.storm.phase} · ${Math.ceil(data.timeRemaining || 0)}s` : "—";
+
+    // Inspector
+    const sel = actors.find((a) => (a.id || a.name) === selectedId);
+    if (sel) {
+      const p = smoothPos.get(selectedId) || resolveActorPos(sel, data);
+      $("inspSub").textContent = sel.alive ? (sel.dbno ? "Derribado (DBNO)" : sel.state || "En juego") : "Eliminado";
+      const hp = Math.round(sel.hp ?? 0), sh = Math.round(sel.shield ?? 0);
+      $("inspector").innerHTML =
+        `<div class="iname"><span>${escapeHtml(sel.name || sel.id)}</span><span class="tag-kind ${sel.isBot ? "bot" : "human"}">${sel.isBot ? "Bot" : "Jugador"}</span></div>` +
+        `<div class="bars">` +
+        `<div class="bar-row"><span>HP</span><div class="bar-track"><div class="bar-fill hp" style="width:${Math.min(100, hp)}%"></div></div><b>${hp}</b></div>` +
+        `<div class="bar-row"><span>ESC</span><div class="bar-track"><div class="bar-fill sh" style="width:${Math.min(100, sh)}%"></div></div><b>${sh}</b></div>` +
+        `</div>` +
+        `<div class="imeta">` +
+        `<div>Elims: <b>${sel.kills ?? 0}</b></div><div>Cuadrícula: <b>${worldToGrid(p.x, p.y)}</b></div>` +
+        `<div>Equipo: <b>#${sel.team ?? "—"}</b></div><div>Estilo: <b>${escapeHtml(sel.style || sel.goal || "—")}</b></div>` +
+        `<div>X: <b>${Math.round(p.x / 100)}m</b></div><div>Y: <b>${Math.round(p.y / 100)}m</b></div>` +
+        `</div>`;
+    }
+    const tpTarget = sel && sel.isBot && sel.alive && lastLiveActive ? (sel.name || "") : "";
+    $("tpBtn").hidden = !tpTarget;
+    $("tpBtn").dataset.target = tpTarget;
+
+    // Roster
+    const q = $("rosterSearch").value.trim().toLowerCase();
+    const list = actors
+      .filter((a) => !q || (a.name || "").toLowerCase().includes(q) || (a.style || "").toLowerCase().includes(q))
+      .sort((a, b) => Number(b.alive) - Number(a.alive) || Number(a.isBot) - Number(b.isBot) || (b.kills ?? 0) - (a.kills ?? 0));
+    $("rosterCount").textContent = list.length;
+    const rl = $("rosterList");
+    rl.replaceChildren(...list.slice(0, 100).map((a) => {
+      const k = a.id || a.name;
+      const row = document.createElement("div");
+      row.className = "roster-item" + (k === selectedId ? " selected" : "") + (a.alive ? "" : " dead");
+      row.innerHTML = `<span class="rdot ${a.isBot ? "bot" : "human"}"></span><span class="rname"></span><span class="rkills"></span>`;
+      row.children[1].textContent = a.name || k;
+      row.children[2].textContent = `${a.kills ?? 0}K · ${Math.round((a.hp ?? 0) + (a.shield ?? 0))}`;
+      row.onclick = () => {
+        selectedId = k;
+        const p = smoothPos.get(k) || resolveActorPos(a, data);
+        if (p.hidden) return;
+        const [u, v] = worldToUv(p.x, p.y);
+        if (zoom < 1.8) zoom = 1.8;
+        const size = Math.min(canvas.width, canvas.height) * zoom;
+        panX = (0.5 - u) * size; panY = (0.5 - v) * size; clampPan();
+      };
+      return row;
+    }));
+
+    // Feed
+    const fl = $("feedList");
+    if (events?.length) {
+      fl.replaceChildren(...events.slice(-14).reverse().map((ev) => {
+        const d = document.createElement("div");
+        d.className = "fe";
+        d.innerHTML = `<span></span><div></div>`;
+        d.children[0].textContent = ev.t || "";
+        d.children[1].textContent = ev.text || "";
+        return d;
+      }));
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  /* ---------- mouse / wheel interactions ---------- */
+  function canvasPos(e) {
+    const r = canvas.getBoundingClientRect();
+    return [(e.clientX - r.left) * (canvas.width / r.width), (e.clientY - r.top) * (canvas.height / r.height)];
+  }
+  function findActorAt(sx, sy) {
+    const { data } = activeTelemetry();
+    if (!data?.actors?.length) return null;
+    let best = null, bestD = 22;
+    for (const a of data.actors) {
+      if (!a.alive && !$("fltDead").checked) continue;
+      if (a.isBot && !$("fltBots").checked) continue;
+      if (!a.isBot && !$("fltHumans").checked) continue;
+      const k = a.id || a.name;
+      const p = smoothPos.get(k) || resolveActorPos(a, data);
+      if (p.hidden) continue;
+      const [ax, ay] = worldToScreen(p.x, p.y);
+      const d = Math.hypot(ax - sx, ay - sy);
+      if (d < bestD) { bestD = d; best = k; }
+    }
+    return best;
+  }
+
+  stage.addEventListener("mousedown", (e) => {
+    if (e.target !== canvas) return;
+    dragging = true; dragMoved = false;
+    stage.classList.add("dragging");
+    const [sx, sy] = canvasPos(e);
+    dragStartX = sx; dragStartY = sy; dragPanX = panX; dragPanY = panY;
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!mapOpen) return;
+    const [sx, sy] = canvasPos(e);
+    if (dragging) {
+      const dx = sx - dragStartX, dy = sy - dragStartY;
+      if (Math.hypot(dx, dy) > 4) { dragMoved = true; followMode = false; $("btnMapFollow").classList.remove("active"); }
+      panX = dragPanX + dx; panY = dragPanY + dy; clampPan();
+      return;
+    }
+    const [wx, wy] = screenToWorld(sx, sy);
+    $("mapCoords").textContent = `Cuadrícula ${worldToGrid(wx, wy)} · X ${Math.round(wx / 100)}m · Y ${Math.round(wy / 100)}m`;
+    hoveredId = findActorAt(sx, sy);
+  });
+  window.addEventListener("mouseup", (e) => {
+    if (!dragging) return;
+    dragging = false; stage.classList.remove("dragging");
+    if (!dragMoved && e.target === canvas) {
+      const [sx, sy] = canvasPos(e);
+      const hit = findActorAt(sx, sy);
+      if (hit) selectedId = hit;
+    }
+  });
+  stage.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+    const next = Math.max(1, Math.min(6, zoom * factor));
+    const ratio = next / zoom;
+    zoom = next;
+    panX *= ratio; panY *= ratio; clampPan();
+  }, { passive: false });
+
+  $("mapZoomIn").onclick = () => { zoom = Math.min(6, zoom * 1.25); clampPan(); };
+  $("mapZoomOut").onclick = () => { zoom = Math.max(1, zoom / 1.25); clampPan(); };
+  $("mapZoomReset").onclick = () => { zoom = 1; panX = 0; panY = 0; followMode = false; $("btnMapFollow").classList.remove("active"); };
+  $("btnMapFollow").onclick = () => {
+    followMode = !followMode;
+    $("btnMapFollow").classList.toggle("active", followMode);
+    if (followMode && !selectedId) {
+      const { data } = activeTelemetry();
+      const first = data?.actors?.find((a) => !a.isBot && a.alive) || data?.actors?.[0];
+      if (first) selectedId = first.id || first.name;
+    }
+  };
+  $("btnMapDemo").onclick = () => { demoMode ? stopDemo() : startDemo(); };
+  $("btnMapDemoEmpty").onclick = () => startDemo();
+  $("btnMapClose").onclick = closeMap;
+  $("mapDialog").onclick = (e) => { if (e.target.id === "mapDialog") closeMap(); };
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape" && mapOpen) closeMap(); });
+
+  function openMap() {
+    mapOpen = true;
+    $("mapDialog").classList.add("visible");
+    resizeCanvas();
+    lastFrame = performance.now();
+    requestAnimationFrame(renderMap);
+  }
+  function closeMap() {
+    mapOpen = false;
+    $("mapDialog").classList.remove("visible");
+  }
+  $("btnLiveMap").onclick = openMap;
+
+  // "TP al bot": the match server sends the match's players next to the selected bot (backend -> CoreV2 RunMapCommands).
+  $("tpBtn").addEventListener("click", async () => {
+    const btn = $("tpBtn");
+    const target = btn.dataset.target;
+    if (!target || btn.disabled) return;
+    btn.disabled = true;
+    try {
+      await api("/api/map/teleport", { target });
+      toast(`Teletransporte a ${target} enviado`);
+    } catch (err) {
+      toast(`No se pudo hacer TP: ${err.message}`, true);
+    } finally {
+      setTimeout(() => { btn.disabled = false; }, 800);
+    }
+  });
+
+  // Poll live match telemetry from backend (fast 450ms when map is open, 2.5s in background for the header badge)
+  async function pollMap() {
+    try {
+      if (running) {
+        const m = await api("/api/map");
+        lastLiveActive = !!m.active;
+        liveData = m.telemetry || null;
+        liveEvents = m.events || [];
+        $("btnLiveMap").classList.toggle("live", lastLiveActive);
+        $("mapBtnLabel").textContent = lastLiveActive
+          ? `Mapa · ${liveData?.playersLeft ?? 0} vivos`
+          : "Mapa en vivo";
+      } else {
+        lastLiveActive = false;
+        $("btnLiveMap").classList.remove("live");
+        $("mapBtnLabel").textContent = "Mapa en vivo";
+      }
+    } catch { /* ignore when backend restarts */ }
+    setTimeout(pollMap, mapOpen ? 450 : 2500);
+  }
+  pollMap();
+})();
 </script>
 </body>
 </html>

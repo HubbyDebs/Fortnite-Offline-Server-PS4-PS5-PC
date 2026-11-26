@@ -63,13 +63,100 @@ index 7a65219..8cfd013 100644
        // An exchange code (GET /account/api/oauth/exchange, below): once, within its five minutes, for its account.
        case "exchange_code": {
          const entry = exchangeCodes?.redeem(String(body.exchange_code ?? ""));
+diff --git a/src/services/fortnite/cloudstorage.js b/src/services/fortnite/cloudstorage.js
+index ecf47c1..0700a32 100644
+--- a/src/services/fortnite/cloudstorage.js
++++ b/src/services/fortnite/cloudstorage.js
+@@ -278,6 +278,54 @@ const defaultNetwork = createNetwork();
+ // reads [Vivox] ServerUrl and Domain from the game ini each time it connects, so this file, merged at start-up, points
+ // the game's own Vivox at Core's emulator. Nothing for older builds (their URL is in the exe) or while the admin panel's
+ // Voice chat (Vivox) switch is off, which leaves the file as it was.
++// Fortnite-Offline-Server (FORTNITE_PS4_PERFORMANCE, settings.json ps4_performance_mode): a lighter picture for a PS4
++// Slim, which drew a third fewer frames with 99 bots than with none. The hotfix's [ConsoleVariables] are applied again
++// as it arrives (UOnlineHotfixManager::HotfixIniFile, FConfigCacheIni::LoadConsoleVariablesFromINI, as
++// events/stormdestruction.js uses it) above the scalability and device profile settings. Only for the consoles:
++// start.mjs marks their requests (x-fos-ps4, by address), so the PC gameserver, which takes the same file, keeps its own.
++// A variable a shipping build doesn't allow is skipped by the game without an error.
++const ps4PerformanceVariables = [
++  "r.ShadowQuality=0",
++  "r.MotionBlurQuality=0",
++  "r.AmbientOcclusionLevels=0",
++  "r.SSR.Quality=0",
++  "r.DepthOfFieldQuality=0",
++  "r.VolumetricFog=0",
++  "r.LensFlareQuality=0",
++  "r.SceneColorFringeQuality=0",
++  "r.BloomQuality=0",
++  "r.DetailMode=0",
++  "grass.DensityScale=0",
++  "foliage.DensityScale=0.25",
++  // 3.6 (Echo, CL-4016789) takes these [ConsoleVariables] (its shadows went, 2026-11-25).
++  "r.ViewDistanceScale=0.75",
++  "r.SkeletalMeshLODBias=1",
++  "r.EmitterSpawnRateScale=0.5"
++];
++const isPs4 = (req) => req?.headers?.["x-fos-ps4"] === "1";
++const isPs4Performance = (req) => Boolean(process.env.FORTNITE_PS4_PERFORMANCE) && isPs4(req);
++const ps4PerformanceSection = (req) => (isPs4Performance(req)
++  ? ["", "[ConsoleVariables]", ...ps4PerformanceVariables, ""].join("\r\n")
++  : "");
++// Fortnite-Offline-Server (FORTNITE_PS4_STRETCHED_FOV, settings.json ps4_stretched_fov / ps4_fov_mode): sets
++// ULocalPlayer::AspectRatioAxisConstraint on PS4 (MaintainYFOV = 80 deg vertical / ~112 deg horizontal on 16:9).
++const validFovModes = new Set(["AspectRatio_MaintainYFOV", "AspectRatio_MajorAxisFOV", "AspectRatio_MaintainXFOV"]);
++const ps4StretchedFovSection = (req) => {
++  const raw = process.env.FORTNITE_PS4_STRETCHED_FOV;
++  if (!raw || !isPs4(req)) return "";
++  const mode = validFovModes.has(raw) ? raw : "AspectRatio_MaintainYFOV";
++  // Include both ULocalPlayer and UFortLocalPlayer: during live hotfix ReloadConfig(), a UFortLocalPlayer instance
++  // reads its own class section ([/Script/FortniteGame.FortLocalPlayer]), not its parent class's section.
++  return [
++    "",
++    "[/Script/Engine.LocalPlayer]",
++    `AspectRatioAxisConstraint=${mode}`,
++    "",
++    "[/Script/FortniteGame.FortLocalPlayer]",
++    `AspectRatioAxisConstraint=${mode}`,
++    ""
++  ].join("\r\n");
++};
+ function systemFiles(req, network = defaultNetwork, settings = null, vivox = null, islandLinks = null) {
+   const address = network.reachableAddress(req);
+   const port = req.socket.localPort;
+@@ -298,8 +346,21 @@ function systemFiles(req, network = defaultNetwork, settings = null, vivox = nul
+   // 5.40's and 5.41's Storm Destruction switch, Athena.bMegaStormEnabled (events/stormdestruction.js, PongooDev/CoreV2#395).
+   // The regions' QoS ping servers, the admin panel's (matchmaking/qos.js, Core-Backend #123): what the client's Auto
+   // region and first region pick pings.
+-  const qos = qosEngineLines(build, settings?.get?.()?.regionPingServers);
+-  const engine = engineNetwork + stormDestructionEngineSection(build) + (qos.length ? [...qos, ""].join("\r\n") : "");
++  // Fortnite-Offline-Server (FORTNITE_FAST_QOS): replace Epic's dead datacenters with a single local ping target so
++  // login's "Checking for datacenters" completes in ~1 ms (or 0.5 s max if UDP is blocked) instead of ~90 s.
++  const qosPort = Number(process.env.FORTNITE_QOS_PORT) || 22222;
++  const qos = process.env.FORTNITE_FAST_QOS && Number(build) >= 4305896
++    ? [
++      "[/Script/Qos.QosRegionManager]",
++      "NumTestsPerRegion=1",
++      "PingTimeout=0.5",
++      "!DatacenterDefinitions=ClearArray",
++      `+DatacenterDefinitions=(Id="CoreNAE", RegionId="NAE", bEnabled=true, Servers[0]=(Address="${address}", Port=${qosPort}))`
++    ]
++    : qosEngineLines(build, settings?.get?.()?.regionPingServers);
++  const engine = engineNetwork + stormDestructionEngineSection(build) + (qos.length ? [...qos, ""].join("\r\n") : "")
++    + ps4PerformanceSection(req)
++    + ps4StretchedFovSection(req);
+   return { "DefaultEngine.ini": Buffer.from(engine, "utf8"), "DefaultGame.ini": Buffer.from(game, "utf8"), ...newModeFiles(build),
+     ...runtimeOptionsFiles(build, settings?.get?.(), creatorsUrl(req, network), islandLinks) };
+ }
 diff --git a/src/services/matchmaking/warmup.js b/src/services/matchmaking/warmup.js
-index 6625138..af02a85 100644
+index 6625138..bd6fef0 100644
 --- a/src/services/matchmaking/warmup.js
 +++ b/src/services/matchmaking/warmup.js
-@@ -102,6 +102,8 @@ export function warmupRoutes({ tokens, sessions, settings, matchmaker, tournamen
+@@ -100,8 +100,11 @@ export function warmupRoutes({ tokens, sessions, settings, matchmaker, tournamen
+       noFill: match?.noFill ?? [],
+       bots: forced || teams
          ? { count: forced ? bots.count : 0, level: bots.level, health: bots.startingHealth, shield: bots.startingShield, quests: bots.eliminationsCountForQuests,
-           fights: bots.botFightChance ?? 30, teams, noFill: match?.noFill ?? [] }
+-          fights: bots.botFightChance ?? 30, teams, noFill: match?.noFill ?? [] }
++          fights: bots.botFightChance ?? 30, materials: bots.startingMaterials ?? 0, harvest: bots.harvestMultiplier ?? 1, teams,
++          noFill: match?.noFill ?? [] }
          : null,
 +      // Fortnite-Offline-Server: the bots' traits beside the bots block (the gameserver reads that one only up to its first "}").
 +      botTraits: (forced || teams) && (bots.traits || bots.mixed) ? { mixed: bots.mixed === true, ...(bots.traits ?? {}) } : null,
@@ -77,7 +164,7 @@ index 6625138..af02a85 100644
        stormDestructionPercent: stormDestructionPercent(current.events),
        takenBotNames: takenBotNames(accounts, req.body?.botNames)
 diff --git a/src/settings/store.js b/src/settings/store.js
-index 9eebdbb..58e5bb2 100644
+index 9eebdbb..d224b29 100644
 --- a/src/settings/store.js
 +++ b/src/settings/store.js
 @@ -624,6 +624,18 @@ function botInteger(value, min, max, base) {
@@ -99,7 +186,7 @@ index 9eebdbb..58e5bb2 100644
  function botsValue(value, base) {
    const given = value && typeof value === "object" && !Array.isArray(value) ? value : {};
    return {
-@@ -645,7 +657,10 @@ function botsValue(value, base) {
+@@ -645,7 +657,14 @@ function botsValue(value, base) {
      // The modes whose lobbies bots fill (#352), none by default.
      fillLobby: sanitizeBotFillLobby(given.fillLobby, base.fillLobby),
      // No bots in custom matchmaking matches (#352), on unless turned off.
@@ -107,7 +194,11 @@ index 9eebdbb..58e5bb2 100644
 +    noCustomMatchBots: typeof given.noCustomMatchBots === "boolean" ? given.noCustomMatchBots : base.noCustomMatchBots !== false,
 +    // Fortnite-Offline-Server: per-trait skills, and a personality of its own for each bot when mixed.
 +    traits: botTraitsValue(given.traits, base.traits),
-+    mixed: typeof given.mixed === "boolean" ? given.mixed : base.mixed === true
++    mixed: typeof given.mixed === "boolean" ? given.mixed : base.mixed === true,
++    // Fortnite-Offline-Server: the wood, stone and metal each bot leaves the bus with (0-999, none by default), and how
++    // many times what its pickaxe harvests (1-10, the game's by default): bots that can pay for their building.
++    startingMaterials: botInteger(given.startingMaterials, 0, 999, base.startingMaterials ?? 0),
++    harvestMultiplier: botInteger(given.harvestMultiplier, 1, 10, base.harvestMultiplier ?? 1)
    };
  }
  function warmupSecondsValue(value) {

@@ -1,0 +1,57 @@
+name: Bots (CoreV2)
+
+# Builds CoreV2 with this project's bots (corev2/setup.mjs: PongooDev/CoreV2 at a fixed commit + corev2/corev2.patch)
+# and publishes Core.dll, CoreClient.dll and CoreRedirect.dll as a "bots-N" release, which the app downloads.
+on:
+  push:
+    branches: [main]
+    paths: ["corev2/**", ".github/workflows/corev2.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: corev2-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # windows-2022 has Visual Studio 2022 (v143); Visual Studio 18's compiler doesn't match the projects' headers.
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Download CoreV2 and apply the patch
+        run: node corev2/setup.mjs
+
+      # cl.exe adds CL to every compile: Core.dll logs the release's number and commit as it starts (Server/Boot.cpp).
+      - name: Build
+        shell: pwsh
+        working-directory: corev2/src
+        run: |
+          $env:CL = "/DCORE_BUILD_NUMBER=${{ github.run_number }} /DCORE_COMMIT=0x$('${{ github.sha }}'.Substring(0, 7))"
+          msbuild Core.sln /m /nologo /v:minimal /p:Configuration=Release /p:Platform=x64
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="bots-${{ github.run_number }}"
+          FILES="corev2/src/x64/Release/Core.dll corev2/src/x64/Release/CoreClient.dll corev2/src/x64/Release/CoreRedirect.dll"
+          for attempt in 1 2 3 4 5; do
+            if gh release view "$TAG" > /dev/null 2>&1; then
+              gh release upload "$TAG" $FILES --clobber && exit 0
+            else
+              gh release create "$TAG" $FILES \
+                --target "${{ github.sha }}" \
+                --title "Bots ${{ github.run_number }}" \
+                --notes "$(git log -1 --format='%s (%h)')" && exit 0
+            fi
+            echo "Publish attempt $attempt failed; retrying in $((attempt * 30)) s"
+            sleep $((attempt * 30))
+          done
+          exit 1

@@ -2,6 +2,7 @@
 _local/
 tools/
 pc-7.40/
+pc-3.6/
 ezfn/
 descargas/
 server/core-backend/
@@ -23,3 +24,9 @@ __pycache__/
 *.utoc
 *.ucas
 eboot.bin
+
+# The Season 7 map image (a screenshot of the game): local only
+app/ui/map-s7.*
+
+# CoreV2 downloaded and patched by corev2/setup.mjs
+corev2/src/

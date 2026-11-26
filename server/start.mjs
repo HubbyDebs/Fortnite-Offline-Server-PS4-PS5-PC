@@ -1,4 +1,4 @@
-// Fortnite 7.40 backend for PS4 (and LAN PCs). Usage: node start.mjs [--pc-only] [--settings file] [--data dir]
+// Fortnite 3.6 (Season 3) backend for PS4 (and LAN PCs). Usage: node start.mjs [--pc-only] [--settings file] [--data dir]
 //
 // Runs Core-Backend (./core-backend, see setup.mjs) with the settings in settings.json and guards the port:
 // only this PC (127.0.0.1) and the PS4s get in. ps4_ip is a fixed IPv4 or "auto", which finds the consoles on the
@@ -65,6 +65,12 @@ if (s.bots.traits != null) {
   }
 }
 const mixed = s.bots.mixed === true;
+// Building: the wood, stone and metal each bot leaves the bus with, and how many times what its pickaxe harvests (needs the
+// Fortnite-Offline-Server build of CoreV2). Without them, bots start with none and harvest as players do.
+const materials = s.bots.materials ?? 0;
+if (!within(materials, 0, 999)) fail("bots.materials goes from 0 to 999");
+const harvestMultiplier = s.bots.harvest_multiplier ?? 1;
+if (!within(harvestMultiplier, 1, 10)) fail("bots.harvest_multiplier goes from 1 to 10");
 // Accounts with everything unlocked (every cosmetic and the Battle Pass maxed); the rest progress by playing.
 const unlockAll = new Set((s.unlock_all ?? []).map((n) => String(n).toLowerCase()));
 
@@ -80,14 +86,32 @@ backendSettings.bots = {
   level: s.bots.level,
   botFightChance: s.bots.fight_chance,
   traits,
-  mixed
+  mixed,
+  startingMaterials: materials,
+  harvestMultiplier
 };
+// Seconds on the warmup island before the bus (the game's default is 120); null or absent keeps the game's.
+if (s.warmup_seconds != null) {
+  if (!within(s.warmup_seconds, 10, 1800)) fail("warmup_seconds goes from 10 to 1800");
+  backendSettings.warmupSeconds = s.warmup_seconds;
+} else {
+  backendSettings.warmupSeconds = null;
+}
 fs.writeFileSync(backendSettingsFile, JSON.stringify(backendSettings, null, 2));
 
 process.env.FORTNITE_PS4_ACCOUNT = s.psn_account;
+process.env.FORTNITE_FAST_QOS = "1";
+// The PS4's performance mode (core-backend's cloudstorage.js ps4PerformanceSection): on unless set to false.
+process.env.FORTNITE_PS4_PERFORMANCE = s.ps4_performance_mode === false ? "" : "1";
+// The PS4's stretched-style high FOV (cloudstorage.js ps4StretchedFovSection): off unless set to true.
+const FOV_MODES = new Set(["AspectRatio_MaintainYFOV", "AspectRatio_MajorAxisFOV", "AspectRatio_MaintainXFOV"]);
+// The app's Echo 3.6 presets (1440x1080, 1279x1080, 1080x1080, wide112) are GoldHEN eboot patches instead: the stretch ones
+// patch the MaintainXFOV branch of CalculateProjectionMatrixGivenView, so forcing MaintainYFOV here would skip them.
+process.env.FORTNITE_PS4_STRETCHED_FOV = s.ps4_stretched_fov === true && FOV_MODES.has(s.ps4_fov_mode) ? s.ps4_fov_mode : "";
 const backend = (f) => import(new URL(`./core-backend/src/${f}`, import.meta.url));
 const { createServer } = await backend("server.js");
 const { listen } = await backend("listen.js");
+const { qosPingPort, startQosPingServer } = await backend("matchmaking/qos.js");
 
 const open = !opt["pc-only"];
 // fromCommandLine: the admin panel cannot change network access.
@@ -125,10 +149,191 @@ server.prependListener("connection", (socket) => {
   }
 });
 
+// Live match telemetry (CoreV2 -> POST /fortnite/api/game/v2/matchmakingservice/telemetry, local-only).
+// Kept in memory and served to the desktop app via GET /admin/api/match/live.
+let liveMatch = null;
+let liveUpdatedAt = 0;
+let liveEvents = [];
+let prevActors = new Map();
+let liveRecordId = null;
+let liveLastRecordAt = 0;
+const MAX_TELEMETRY_BYTES = 512 * 1024;
+const LIVE_STALE_MS = 10_000;
+const RECORD_INTERVAL_MS = 500;
+const matchesDir = path.join(dataDir, "matches");
+// Commands for the match server from the desktop app's map ("teleportto\t<name>"), handed over in the answer to its next
+// telemetry post (CoreV2 RunMapCommands). Old ones are dropped: the match server posts every 0.5 s.
+let mapCommands = [];
+const MAP_COMMAND_TTL_MS = 5_000;
+
+function updateLiveTelemetry(data) {
+  const now = Date.now();
+  const actors = Array.isArray(data?.actors) ? data.actors : [];
+  const phase = String(data?.phase ?? "Unknown");
+  // Reset event history when a brand-new match starts (Setup/Warmup after another match or >60s gap).
+  if (!liveMatch || now - liveUpdatedAt > 60_000 || (phase === "Warmup" && liveMatch.phase !== "Warmup" && liveMatch.phase !== "Setup")) {
+    liveEvents = [];
+    prevActors = new Map();
+    liveRecordId = `match-${new Date(now).toISOString().replace(/[:.]/g, "-")}`;
+    liveLastRecordAt = 0;
+  }
+  const timeStr = new Date().toTimeString().slice(0, 8);
+  const nextActors = new Map();
+  for (const a of actors) {
+    const key = String(a.id ?? a.name ?? "");
+    if (!key) continue;
+    nextActors.set(key, a);
+    const prev = prevActors.get(key);
+    if (prev && prev.alive && !a.alive) {
+      liveEvents.push({ t: timeStr, type: "elim", text: `${a.name || key} eliminado`, isBot: !!a.isBot });
+    } else if (prev && (a.kills ?? 0) > (prev.kills ?? 0)) {
+      liveEvents.push({ t: timeStr, type: "kill", text: `${a.name || key} suma ${a.kills} elim.`, isBot: !!a.isBot });
+    }
+  }
+  if (liveEvents.length > 40) liveEvents = liveEvents.slice(-40);
+  prevActors = nextActors;
+  liveMatch = {
+    phase,
+    phaseStep: String(data?.phaseStep ?? ""),
+    timeRemaining: Number(data?.timeRemaining ?? 0),
+    playersLeft: Number(data?.playersLeft ?? actors.filter((a) => a.alive).length),
+    totalPlayers: Number(data?.totalPlayers ?? actors.length),
+    storm: data?.storm ?? null,
+    bus: data?.bus ?? null,
+    pois: Array.isArray(data?.pois) && data.pois.length ? data.pois : (liveMatch?.pois ?? []),
+    actors
+  };
+  liveUpdatedAt = now;
+  // Record real matches to data/matches/<matchId>.jsonl (skip when record: false, e.g. playback).
+  if (data?.record !== false && actors.length > 0 && now - liveLastRecordAt >= RECORD_INTERVAL_MS) {
+    liveLastRecordAt = now;
+    try {
+      fs.mkdirSync(matchesDir, { recursive: true });
+      const rec = { ts: now, source: String(data?.source ?? "corev2"), ...liveMatch, pois: undefined };
+      fs.appendFile(path.join(matchesDir, `${liveRecordId}.jsonl`), JSON.stringify(rec) + "\n", () => {});
+    } catch { /* non-fatal */ }
+  }
+}
+
+function handleLiveMap(req, res) {
+  const from = ipOf(req.socket);
+  const route = req.url.split("?")[0];
+  if (route === "/fortnite/api/game/v2/matchmakingservice/telemetry" && req.method === "POST") {
+    if (!isLocal(from)) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end('{"error":"local only"}');
+      return true;
+    }
+    let body = "";
+    let tooBig = false;
+    req.on("data", (chunk) => {
+      if (tooBig) return;
+      body += chunk;
+      if (body.length > MAX_TELEMETRY_BYTES) tooBig = true;
+    });
+    req.on("end", () => {
+      if (tooBig) {
+        res.writeHead(413, { "Content-Type": "application/json" });
+        res.end('{"error":"payload too large"}');
+        return;
+      }
+      try {
+        updateLiveTelemetry(JSON.parse(body || "{}"));
+        const now = Date.now();
+        const commands = mapCommands.filter((c) => now - c.at < MAP_COMMAND_TTL_MS).map((c) => c.line);
+        mapCommands = [];
+        res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end(commands.length ? `${commands.join("\n")}\n` : "");
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return true;
+  }
+  if (route === "/admin/api/match/teleport" && req.method === "POST") {
+    if (!isLocal(from)) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end('{"error":"local only"}');
+      return true;
+    }
+    let body = "";
+    req.on("data", (chunk) => { if (body.length < 4096) body += chunk; });
+    req.on("end", () => {
+      let target = "";
+      try {
+        target = String(JSON.parse(body || "{}").target ?? "");
+      } catch {}
+      // A player or bot name as the match server sent it: printable ASCII, no tabs or line breaks.
+      target = target.replace(/[^\x20-\x7e]/g, "").trim().slice(0, 64);
+      if (!target) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end('{"error":"target"}');
+        return;
+      }
+      const active = Boolean(liveMatch && Date.now() - liveUpdatedAt < LIVE_STALE_MS);
+      if (!active) {
+        res.writeHead(409, { "Content-Type": "application/json" });
+        res.end('{"error":"no match running"}');
+        return;
+      }
+      mapCommands.push({ line: `teleportto\t${target}`, at: Date.now() });
+      note(`Live map: teleport to ${target}`);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end('{"ok":true}');
+    });
+    return true;
+  }
+  if (route === "/admin/api/match/live" && req.method === "GET") {
+    if (!isLocal(from)) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end('{"error":"local only"}');
+      return true;
+    }
+    const ageMs = liveUpdatedAt ? Date.now() - liveUpdatedAt : null;
+    const active = Boolean(liveMatch && ageMs !== null && ageMs < LIVE_STALE_MS);
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({
+      active,
+      stale: Boolean(liveMatch && !active),
+      updatedAt: liveUpdatedAt || null,
+      ageMs,
+      telemetry: liveMatch,
+      events: liveEvents
+    }));
+    return true;
+  }
+  if (route === "/admin/api/match/live" && req.method === "DELETE") {
+    if (!isLocal(from)) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end('{"error":"local only"}');
+      return true;
+    }
+    liveMatch = null;
+    liveUpdatedAt = 0;
+    liveEvents = [];
+    prevActors = new Map();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end('{"ok":true}');
+    return true;
+  }
+  return false;
+}
+
+const existingRequestHandlers = server.listeners("request");
+server.removeAllListeners("request");
+server.on("request", (req, res) => {
+  if (handleLiveMap(req, res)) return;
+  for (const handler of existingRequestHandlers) handler(req, res);
+});
+
 // What the console asks for, without query strings or tokens.
 let userAgent;
 server.prependListener("request", (req, res) => {
   const from = ipOf(req.socket);
+  // Marks a console's request for the backend (its PS4-only hotfix settings); never taken from the request itself.
+  delete req.headers["x-fos-ps4"];
+  if (ps4s.has(from)) req.headers["x-fos-ps4"] = "1";
   if (lan && !ps4s.has(from) && isPrivate(from) && req.method === "POST" && req.url.startsWith("/account/api/oauth/token")) {
     res.on("finish", () => { if (res.statusCode === 200) note(`PC player connected from ${from}`); });
   }
@@ -196,7 +401,16 @@ if (open) {
   xmpp.listen(XMPP_PORT, "0.0.0.0");
 }
 
-console.log(`Backend on port ${s.port}. Bots: ${s.bots.count}, ${traits ? "custom traits" : `level ${s.bots.level}`}${mixed ? ", mixed personalities" : ""}.`);
+// Fast QoS ping responder (UDP 22222): answers the console's datacenter check in ~1 ms instead of waiting ~90 s
+// for Epic's dead ping servers to time out.
+const qosPing = await startQosPingServer(
+  { bindAddress: () => (open ? undefined : "127.0.0.1"), allows: (ip) => allowed(String(ip ?? "").replace(/^::ffff:/, "")) },
+  qosPingPort,
+  (text) => note(text)
+);
+if (qosPing.port) process.env.FORTNITE_QOS_PORT = String(qosPing.port);
+
+console.log(`Backend on port ${s.port}. Bots: ${s.bots.count}, ${traits ? "custom traits" : `level ${s.bots.level}`}${mixed ? ", mixed personalities" : ""}${materials ? `, ${materials} of each material` : ""}${harvestMultiplier > 1 ? `, harvest x${harvestMultiplier}` : ""}.`);
 console.log(`Admin panel: http://127.0.0.1:${s.port}/admin`);
 if (open) {
   for (const i of Object.values(os.networkInterfaces()).flat()) {
