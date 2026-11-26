@@ -158,7 +158,7 @@ This project stands on the work of others. Thank you!
   structure of its **AFR** plugin by **jocover** and **SiSTR0**.
 - **[OpenOrbis PS4 Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain)** (GPL-3.0), used to build the
   plugin, and **[LLVM](https://llvm.org)**.
-- **EZFN**, whose PS4 setup showed that Fortnite 7.40's services can be pointed elsewhere through the game's config.
+- **ECHO**, whose PS4 setup showed that Fortnite 3.60's services can be pointed elsewhere through the game's config.
 
 If you use this project, please credit **Core** as well.
 
