@@ -30,3 +30,17 @@ app/ui/map-s7.*
 
 # CoreV2 downloaded and patched by corev2/setup.mjs
 corev2/src/
+
+# Local ML datasets, trained weights, and build outputs (keep analysis scripts & human reference JSONs)
+ml/data/
+ml/models/pretrained/
+ml/models/s3_200/
+ml/models/**/*.pt
+ml/models/**/bot_brain*.json
+ml/models/**/CoreAthenaBotBrain*.h
+ml/**/bin/
+ml/**/obj/
+ml/**/node_modules/
+
+# Local settings backups
+server/settings.before-*.json

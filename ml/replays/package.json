@@ -1,0 +1,10 @@
+{
+  "name": "fortnite-offline-ml-replays",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "fortnite-replay-downloader": "^3.0.8",
+    "fortnite-replay-parser": "^1.4.8"
+  }
+}

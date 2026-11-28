@@ -147,10 +147,19 @@ index ecf47c1..0700a32 100644
      ...runtimeOptionsFiles(build, settings?.get?.(), creatorsUrl(req, network), islandLinks) };
  }
 diff --git a/src/services/matchmaking/warmup.js b/src/services/matchmaking/warmup.js
-index 6625138..bd6fef0 100644
+index 6625138..6c05308 100644
 --- a/src/services/matchmaking/warmup.js
 +++ b/src/services/matchmaking/warmup.js
-@@ -100,8 +100,11 @@ export function warmupRoutes({ tokens, sessions, settings, matchmaker, tournamen
+@@ -90,6 +90,8 @@ export function warmupRoutes({ tokens, sessions, settings, matchmaker, tournamen
+     const teams = bots?.fillPlayerTeams === true;
+     res.json({
+       warmupSeconds: current.warmupSeconds ?? null,
++      // Fortnite-Offline-Server: Zero Build (nobody builds; CoreV2's FCoreAthenaBotManager::bZeroBuild).
++      zeroBuild: current.zeroBuild === true,
+       // A Playground match (Core-Backend #299) is its party's alone: no late joining, so the gameserver's countdown
+       // shortens once the party is in, as with late joining off.
+       lateJoin: lateJoin && match?.partyOnly !== true,
+@@ -100,8 +102,11 @@ export function warmupRoutes({ tokens, sessions, settings, matchmaker, tournamen
        noFill: match?.noFill ?? [],
        bots: forced || teams
          ? { count: forced ? bots.count : 0, level: bots.level, health: bots.startingHealth, shield: bots.startingShield, quests: bots.eliminationsCountForQuests,
@@ -164,10 +173,19 @@ index 6625138..bd6fef0 100644
        stormDestructionPercent: stormDestructionPercent(current.events),
        takenBotNames: takenBotNames(accounts, req.body?.botNames)
 diff --git a/src/settings/store.js b/src/settings/store.js
-index 9eebdbb..d224b29 100644
+index 9eebdbb..d158749 100644
 --- a/src/settings/store.js
 +++ b/src/settings/store.js
-@@ -624,6 +624,18 @@ function botInteger(value, min, max, base) {
+@@ -192,6 +192,8 @@ const defaults = {
+   matchmakingGatherSeconds: 10,
+   warmupSeconds: 120,
+   lateJoin: false,
++  // Fortnite-Offline-Server: Zero Build, a mode of its own: nobody builds, players or bots (the gameserver's warmup answer).
++  zeroBuild: false,
+   regionFallback: true,
+   // Battle Royale player bots (CoreV2 #233): Core's backport of Epic's player bots, for builds without native ones (every
+   // build before 8.30). Off by default. fillPlayerTeams ("Fill players' teams with bots") puts bots in the empty places on
+@@ -624,6 +626,18 @@ function botInteger(value, min, max, base) {
    const number = typeof value === "string" && value.trim() ? Number(value) : value;
    return Number.isInteger(number) && number >= min && number <= max ? number : base;
  }
@@ -186,7 +204,7 @@ index 9eebdbb..d224b29 100644
  function botsValue(value, base) {
    const given = value && typeof value === "object" && !Array.isArray(value) ? value : {};
    return {
-@@ -645,7 +657,14 @@ function botsValue(value, base) {
+@@ -645,7 +659,14 @@ function botsValue(value, base) {
      // The modes whose lobbies bots fill (#352), none by default.
      fillLobby: sanitizeBotFillLobby(given.fillLobby, base.fillLobby),
      // No bots in custom matchmaking matches (#352), on unless turned off.
@@ -202,3 +220,19 @@ index 9eebdbb..d224b29 100644
    };
  }
  function warmupSecondsValue(value) {
+@@ -772,6 +793,7 @@ export function createSettingsStore(dataDir) {
+       const warmup = warmupSecondsValue(loaded.warmupSeconds);
+       settings.warmupSeconds = warmup === undefined ? defaults.warmupSeconds : warmup;
+       settings.lateJoin = loaded.lateJoin === true;
++      settings.zeroBuild = loaded.zeroBuild === true;
+       settings.bots = botsValue(loaded.bots, defaults.bots);
+       settings.regionFallback = loaded.regionFallback !== false;
+       settings.vbuckPacks = loaded.vbuckPacks !== false;
+@@ -953,6 +975,7 @@ export function createSettingsStore(dataDir) {
+       const warmup = warmupSecondsValue(partial.warmupSeconds);
+       if (partial.warmupSeconds !== undefined && warmup !== undefined) settings.warmupSeconds = warmup;
+       if (typeof partial.lateJoin === "boolean") settings.lateJoin = partial.lateJoin;
++      if (typeof partial.zeroBuild === "boolean") settings.zeroBuild = partial.zeroBuild;
+       if (partial.bots !== undefined) settings.bots = botsValue(partial.bots, settings.bots);
+       if (typeof partial.ltmOriginalDates === "boolean") settings.ltmOriginalDates = partial.ltmOriginalDates;
+       if (partial.ltmCloseEncounters !== undefined) settings.ltmCloseEncounters = closeEncountersValue(partial.ltmCloseEncounters, settings.ltmCloseEncounters);

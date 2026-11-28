@@ -59,16 +59,17 @@ def fortnite_running():
 class TestBackend:
     """start.mjs on the test port, PC only, with the run's own settings and data folder."""
 
-    def __init__(self, run_dir, args, live):
+    def __init__(self, run_dir, args, live, port=None, suffix=""):
         self.dir = run_dir
-        self.settings_file = os.path.join(run_dir, "backend-settings.json")
+        self.suffix = suffix
+        self.settings_file = os.path.join(run_dir, f"backend-settings{suffix}.json")
         bots = {"count": args.bots, "level": args.level, "fight_chance": args.fights, "mixed": args.mixed,
                 "materials": args.materials, "harvest_multiplier": args.harvest}
         if args.traits_from_settings and live.get("bots", {}).get("traits"):
             bots["traits"] = live["bots"]["traits"]
-        self.port = args.port
+        self.port = port or args.port
         cfg = {"ps4_ip": "auto", "port": self.port, "psn_account": "SimPlayer", "bots": bots, "unlock_all": [],
-               "lan": False, "warmup_seconds": args.warmup}
+               "lan": False, "warmup_seconds": args.warmup, "zero_build": bool(getattr(args, "zero_build", False))}
         with open(self.settings_file, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2)
         self.proc = None
@@ -76,12 +77,12 @@ class TestBackend:
 
     def start(self):
         self.proc = subprocess.Popen(
-            ["node", "start.mjs", "--pc-only", "--settings", self.settings_file, "--data", os.path.join(self.dir, "backend-data")],
+            ["node", "start.mjs", "--pc-only", "--settings", self.settings_file, "--data", os.path.join(self.dir, f"backend-data{self.suffix}")],
             cwd=SERVER, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
         ready = threading.Event()
 
         def read():
-            with open(os.path.join(self.dir, "backend.log"), "w", encoding="utf-8") as out:
+            with open(os.path.join(self.dir, f"backend{self.suffix}.log"), "w", encoding="utf-8") as out:
                 for raw in self.proc.stdout:
                     line = raw.decode("utf-8", "replace").rstrip()
                     out.write(line + "\n")
@@ -94,7 +95,7 @@ class TestBackend:
 
         threading.Thread(target=read, daemon=True).start()
         if not ready.wait(60) or self.proc.poll() is not None:
-            raise RuntimeError(f"the test backend did not start (see {self.dir}\\backend.log)")
+            raise RuntimeError(f"the test backend did not start (see {self.dir}\\backend{self.suffix}.log)")
         log(f"Test backend ready on port {self.port}")
 
     def stop(self):
@@ -104,10 +105,10 @@ class TestBackend:
 
 # ---------------------------------------------------------------- one match
 
-def play_match(build, dlls, args, run_dir, number):
+def play_match(build, dlls, args, run_dir, number, port=None):
     exe = match_server.exe_path(build)
     extra = " -CoreBotMatch" + (" -CoreBotHotDrop" if args.hotdrop else "")
-    handle, pid = match_server.start_injected(exe, match_server.arguments(args.port) + extra, dlls)
+    handle, pid = match_server.start_injected(exe, match_server.arguments(port or args.port) + extra, dlls)
     log(f"Match {number}: server pid {pid}")
     folder = os.path.dirname(exe)
     log_path = os.path.join(folder, f"Server_log_{pid}.txt")
@@ -209,7 +210,13 @@ def summarize(matches):
     mean = lambda xs: round(statistics.mean(xs), 2) if xs else None
     pieces = {}
     steer = {}
+    still_by = {}
+    breaks_by = {}
     for b in bots:
+        for k, v in (b.get("stillByIntent") or {}).items():
+            still_by[k] = still_by.get(k, 0) + v
+        for k, v in (b.get("breakThroughsByWhy") or {}).items():
+            breaks_by[k] = breaks_by.get(k, 0) + v
         for k, v in (b.get("pieces") or {}).items():
             pieces[k] = pieces.get(k, 0) + v
         for k, v in (b.get("steerSeconds") or {}).items():
@@ -259,6 +266,8 @@ def summarize(matches):
         "materialsAtEnd": mean([sum(b["materials"]) for b in bots]),
         "piecesByReason": dict(sorted(pieces.items(), key=lambda kv: -kv[1])),
         "steer%ByReason": {k: round(100 * v / ground, 1) for k, v in sorted(steer.items(), key=lambda kv: -kv[1])},
+        "still%ByIntent": {k: round(100 * v / ground, 1) for k, v in sorted(still_by.items(), key=lambda kv: -kv[1])},
+        "breakThroughsPerBotByWhy": {k: round(v / len(bots), 2) for k, v in sorted(breaks_by.items(), key=lambda kv: -kv[1])},
     }
 
 
@@ -271,6 +280,10 @@ def print_summary(title, s):
         print(f"    steering {k:39} {v}% of ground time")
     for k, v in (s.get("piecesByReason") or {}).items():
         print(f"    built for {k:40} {v}")
+    for k, v in (s.get("still%ByIntent") or {}).items():
+        print(f"    still while {k:38} {v}% of ground time")
+    for k, v in (s.get("breakThroughsPerBotByWhy") or {}).items():
+        print(f"    breaks through ({k}) {'':{max(0, 30 - len(k))}} {v} per bot")
 
 
 HUMANS = os.path.join(ROOT, "ml", "models", "human_metrics_ch1.json")
@@ -329,20 +342,50 @@ def run(args):
     match_server.write_engine_ini()
     with open(os.path.join(run_dir, "run.json"), "w", encoding="utf-8") as f:
         json.dump({"args": vars(args), "build": build, "dlls": dlls}, f, indent=2)
-    backend = TestBackend(run_dir, args, live)
-    matches = []
+    # --parallel N: N workers, each with its own test backend (port, port+1, ...) and match server, playing the run's
+    # matches between them; their servers start 30 s apart (the game port each takes is the next free one).
+    workers = max(1, min(args.parallel, args.matches))
+    ports = [args.port + i for i in range(workers)]
+    if any(p == 5595 or p == live.get("port", 5595) for p in ports):
+        sys.exit(f"Ports {ports} include the live backend's: pick another --port.")
+    backends = [TestBackend(run_dir, args, live, port, "" if i == 0 else f"-{i + 1}") for i, port in enumerate(ports)]
+    matches = {}
+    lock = threading.Lock()
+    stop = threading.Event()
+
+    def worker(index):
+        if index:
+            stop.wait(30 * index)
+        for n in range(index + 1, args.matches + 1, workers):
+            if stop.is_set():
+                return
+            try:
+                result = play_match(build, dlls, args, run_dir, n, ports[index])
+            except Exception as error:
+                log(f"Match {n}: failed ({error})")
+                continue
+            with lock:
+                matches[n] = result
+                if not result["bots"]:
+                    log(f"Match {n}: no match stats lines (is this a CoreV2 with LogMatchStats?)")
+                print_summary(f"match {n}", summarize([result]))
+
     try:
-        backend.start()
-        for n in range(1, args.matches + 1):
-            result = play_match(build, dlls, args, run_dir, n)
-            matches.append(result)
-            if not result["bots"]:
-                log(f"Match {n}: no match stats lines (is this a CoreV2 with LogMatchStats?)")
-            print_summary(f"match {n}", summarize([result]))
+        for backend in backends:
+            backend.start()
+        threads = [threading.Thread(target=worker, args=(i,), daemon=True) for i in range(workers)]
+        for thread in threads:
+            thread.start()
+        while any(thread.is_alive() for thread in threads):
+            for thread in threads:
+                thread.join(1)
     except KeyboardInterrupt:
+        stop.set()
         log("Stopped")
     finally:
-        backend.stop()
+        for backend in backends:
+            backend.stop()
+    matches = [matches[n] for n in sorted(matches)]
     summary = summarize(matches)
     with open(os.path.join(run_dir, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
@@ -360,6 +403,7 @@ def main():
     r.add_argument("--level", type=int, default=7)
     r.add_argument("--fights", type=int, default=50, help="bot vs bot fight chance %%")
     r.add_argument("--mixed", action="store_true", help="each bot its own skill tier and play style")
+    r.add_argument("--zero-build", dest="zero_build", action="store_true", help="Zero Build mode: nobody builds, bots gather no materials")
     r.add_argument("--materials", type=int, default=0, help="wood, stone and metal each bot leaves the bus with")
     r.add_argument("--harvest", type=int, default=1, help="harvest multiplier")
     r.add_argument("--warmup", type=int, default=30, help="warmup seconds")
@@ -369,6 +413,7 @@ def main():
     r.add_argument("--build", help="PC build folder (default: settings.json pc_build)")
     r.add_argument("--port", type=int, default=TEST_PORT,
                    help="test backend port (default 5711; another one, e.g. 5712 with --alongside, runs a second simulation at once)")
+    r.add_argument("--parallel", type=int, default=1, help="matches played at once (each its own test backend on --port, --port+1, ...)")
     r.add_argument("--alongside", action="store_true", help="run next to another Fortnite server (e.g. the app's while playing)")
     r.add_argument("--core-dir", help="local CoreV2 x64\\Release folder (default: settings.json core_dir)")
     c = sub.add_parser("compare", help="compare two runs' summaries")

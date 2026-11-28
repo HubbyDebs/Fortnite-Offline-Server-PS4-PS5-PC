@@ -1,0 +1,186 @@
+{
+  "matches_analyzed": 19,
+  "B1_storm_rotation": {
+    "safety_margin_sec": {
+      "n": 247,
+      "mean": 43.55,
+      "p25": 27.23,
+      "median": 50.96,
+      "p75": 62.52,
+      "p90": 73.69
+    },
+    "time_remaining_sec": {
+      "n": 247,
+      "mean": 90.78,
+      "p25": 60.75,
+      "median": 120.0,
+      "p75": 120.0,
+      "p90": 120.0
+    },
+    "travel_time_needed_sec": {
+      "n": 247,
+      "mean": 47.23,
+      "p25": 19.71,
+      "median": 43.2,
+      "p75": 67.35,
+      "p90": 74.94
+    },
+    "dist_to_next_edge_m": {
+      "n": 247,
+      "mean": 259.77,
+      "p25": 108.41,
+      "median": 237.62,
+      "p75": 370.4,
+      "p90": 412.17
+    }
+  },
+  "Fase_B_storm_exposure": {
+    "pct_time_in_storm": 12.41,
+    "storm_sec_per_player_match": {
+      "n": 78,
+      "mean": 31.1,
+      "p25": 7.0,
+      "median": 22.0,
+      "p75": 42.75,
+      "p90": 79.8
+    },
+    "deaths_observed": 0,
+    "deaths_in_storm_pct": 0.0
+  },
+  "C2_early_looting_proxy": {
+    "sec_staying_within_45m_of_drop": {
+      "n": 138,
+      "mean": 154.39,
+      "p25": 84.0,
+      "median": 123.5,
+      "p75": 220.0,
+      "p90": 292.0
+    }
+  },
+  "Fase_D_fights": {
+    "fights_detected": 324,
+    "duration_sec": {
+      "n": 324,
+      "mean": 19.23,
+      "p25": 5.0,
+      "median": 12.0,
+      "p75": 24.0,
+      "p90": 43.0
+    },
+    "pct_ending_in_elim": 0.0,
+    "pct_third_party": 60.49
+  },
+  "Fase_F_height_advantage": {
+    "pct_fights_with_climb_gt_280uu": 42.28,
+    "resolved_fights_with_clear_height_diff": 0,
+    "high_ground_win_rate_pct": 0.0
+  },
+  "Fase_A_movement": {
+    "samples": 13369,
+    "pct_idle_lt_60uus": 20.02,
+    "pct_crouched": 7.62,
+    "pct_sprinting_gt_420uus": 23.07,
+    "speed_uus": {
+      "n": 13369,
+      "mean": 254.48,
+      "p25": 77.2,
+      "median": 201.22,
+      "p75": 402.66,
+      "p90": 559.5
+    },
+    "dist_moved_per_phase_m": {
+      "phase_1": {
+        "n": 269,
+        "mean": 66.09,
+        "p25": 9.98,
+        "median": 32.55,
+        "p75": 93.81,
+        "p90": 170.35
+      },
+      "phase_2": {
+        "n": 100,
+        "mean": 121.27,
+        "p25": 18.03,
+        "median": 73.58,
+        "p75": 162.52,
+        "p90": 296.88
+      },
+      "phase_3": {
+        "n": 31,
+        "mean": 93.34,
+        "p25": 22.86,
+        "median": 65.16,
+        "p75": 124.9,
+        "p90": 216.64
+      },
+      "phase_4": {
+        "n": 13,
+        "mean": 114.42,
+        "p25": 26.33,
+        "median": 60.88,
+        "p75": 134.87,
+        "p90": 282.59
+      },
+      "phase_5": {
+        "n": 10,
+        "mean": 91.33,
+        "p25": 71.51,
+        "median": 85.59,
+        "p75": 112.0,
+        "p90": 145.21
+      },
+      "phase_6": {
+        "n": 7,
+        "mean": 46.21,
+        "p25": 5.29,
+        "median": 20.03,
+        "p75": 71.36,
+        "p90": 102.87
+      },
+      "phase_7": {
+        "n": 2,
+        "mean": 68.64,
+        "p25": 56.04,
+        "median": 68.64,
+        "p75": 81.24,
+        "p90": 88.79
+      }
+    }
+  },
+  "Endgame_phase_5_plus": {
+    "samples": 854,
+    "norm_dist_to_center": {
+      "n": 854,
+      "mean": 0.38,
+      "p25": 0.2,
+      "median": 0.35,
+      "p75": 0.52,
+      "p90": 0.66
+    },
+    "pct_stationary_hiding": 12.41,
+    "pct_actively_fighting_lt_35m": 44.61
+  },
+  "Difficulty_Top10_vs_Median": {
+    "total_player_tracks": 298,
+    "top_10_pct_lvl9": {
+      "players": 30,
+      "avg_kills": 0.0,
+      "avg_survival_s": 971.3,
+      "idle_pct": 9.0,
+      "storm_time_pct": 10.5,
+      "rot_margin_med_s": 45.0,
+      "avg_height_gains": 9.2,
+      "avg_dist_m": 345.7
+    },
+    "median_player_lvl3": {
+      "players": 149,
+      "avg_kills": 0.0,
+      "avg_survival_s": 287.2,
+      "idle_pct": 14.4,
+      "storm_time_pct": 11.7,
+      "rot_margin_med_s": 52.8,
+      "avg_height_gains": 1.52,
+      "avg_dist_m": 98.1
+    }
+  }
+}

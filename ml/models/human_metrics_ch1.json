@@ -1,0 +1,186 @@
+{
+  "matches_analyzed": 296,
+  "B1_storm_rotation": {
+    "safety_margin_sec": {
+      "n": 4524,
+      "mean": 46.59,
+      "p25": 29.65,
+      "median": 45.32,
+      "p75": 63.13,
+      "p90": 78.09
+    },
+    "time_remaining_sec": {
+      "n": 4524,
+      "mean": 70.32,
+      "p25": 51.0,
+      "median": 71.1,
+      "p75": 89.9,
+      "p90": 107.1
+    },
+    "travel_time_needed_sec": {
+      "n": 4524,
+      "mean": 23.74,
+      "p25": 8.39,
+      "median": 17.25,
+      "p75": 33.2,
+      "p90": 54.29
+    },
+    "dist_to_next_edge_m": {
+      "n": 4524,
+      "mean": 130.55,
+      "p25": 46.17,
+      "median": 94.87,
+      "p75": 182.62,
+      "p90": 298.58
+    }
+  },
+  "Fase_B_storm_exposure": {
+    "pct_time_in_storm": 9.49,
+    "storm_sec_per_player_match": {
+      "n": 1022,
+      "mean": 60.67,
+      "p25": 20.0,
+      "median": 50.0,
+      "p75": 90.0,
+      "p90": 137.7
+    },
+    "deaths_observed": 28,
+    "deaths_in_storm_pct": 3.57
+  },
+  "C2_early_looting_proxy": {
+    "sec_staying_within_45m_of_drop": {
+      "n": 7669,
+      "mean": 20.43,
+      "p25": 5.0,
+      "median": 12.0,
+      "p75": 20.0,
+      "p90": 30.0
+    }
+  },
+  "Fase_D_fights": {
+    "fights_detected": 2487,
+    "duration_sec": {
+      "n": 2487,
+      "mean": 19.49,
+      "p25": 5.0,
+      "median": 14.0,
+      "p75": 25.0,
+      "p90": 40.0
+    },
+    "pct_ending_in_elim": 25.61,
+    "pct_third_party": 38.64
+  },
+  "Fase_F_height_advantage": {
+    "pct_fights_with_climb_gt_280uu": 56.53,
+    "resolved_fights_with_clear_height_diff": 336,
+    "high_ground_win_rate_pct": 60.71
+  },
+  "Fase_A_movement": {
+    "samples": 276881,
+    "pct_idle_lt_60uus": 19.8,
+    "pct_crouched": 0.48,
+    "pct_sprinting_gt_420uus": 29.64,
+    "speed_uus": {
+      "n": 276881,
+      "mean": 277.22,
+      "p25": 86.27,
+      "median": 247.58,
+      "p75": 462.2,
+      "p90": 550.68
+    },
+    "dist_moved_per_phase_m": {
+      "phase_1": {
+        "n": 5548,
+        "mean": 120.48,
+        "p25": 11.99,
+        "median": 46.89,
+        "p75": 166.41,
+        "p90": 345.41
+      },
+      "phase_2": {
+        "n": 1197,
+        "mean": 267.45,
+        "p25": 68.3,
+        "median": 186.8,
+        "p75": 370.93,
+        "p90": 667.78
+      },
+      "phase_3": {
+        "n": 685,
+        "mean": 200.61,
+        "p25": 53.96,
+        "median": 137.9,
+        "p75": 310.74,
+        "p90": 467.09
+      },
+      "phase_4": {
+        "n": 374,
+        "mean": 197.05,
+        "p25": 64.75,
+        "median": 167.82,
+        "p75": 304.79,
+        "p90": 391.54
+      },
+      "phase_5": {
+        "n": 178,
+        "mean": 163.56,
+        "p25": 79.96,
+        "median": 159.7,
+        "p75": 235.43,
+        "p90": 277.49
+      },
+      "phase_6": {
+        "n": 88,
+        "mean": 111.13,
+        "p25": 42.35,
+        "median": 87.8,
+        "p75": 188.18,
+        "p90": 225.99
+      },
+      "phase_7": {
+        "n": 32,
+        "mean": 58.72,
+        "p25": 13.32,
+        "median": 48.56,
+        "p75": 96.28,
+        "p90": 136.35
+      }
+    }
+  },
+  "Endgame_phase_5_plus": {
+    "samples": 10061,
+    "norm_dist_to_center": {
+      "n": 10061,
+      "mean": 0.65,
+      "p25": 0.45,
+      "median": 0.68,
+      "p75": 0.85,
+      "p90": 0.95
+    },
+    "pct_stationary_hiding": 29.25,
+    "pct_actively_fighting_lt_35m": 43.12
+  },
+  "Difficulty_Top10_vs_Median": {
+    "total_player_tracks": 4847,
+    "top_10_pct_lvl9": {
+      "players": 485,
+      "avg_kills": 2.15,
+      "avg_survival_s": 774.0,
+      "idle_pct": 19.8,
+      "storm_time_pct": 10.1,
+      "rot_margin_med_s": 45.8,
+      "avg_height_gains": 18.64,
+      "avg_dist_m": 831.2
+    },
+    "median_player_lvl3": {
+      "players": 2424,
+      "avg_kills": 0.25,
+      "avg_survival_s": 125.4,
+      "idle_pct": 15.2,
+      "storm_time_pct": 3.7,
+      "rot_margin_med_s": 49.7,
+      "avg_height_gains": 3.24,
+      "avg_dist_m": 187.8
+    }
+  }
+}

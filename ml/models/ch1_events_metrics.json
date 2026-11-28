@@ -1,0 +1,496 @@
+{
+  "events_pass": {
+    "replays_scanned": 399,
+    "total_eliminations": 20549,
+    "knocked_events": 8488,
+    "self_eliminations": 1005,
+    "weapon_share": {
+      "3:Shotgun": {
+        "kills": 7148,
+        "pct": 34.79
+      },
+      "4:Rifle (AR)": {
+        "kills": 5006,
+        "pct": 24.36
+      },
+      "5:SMG": {
+        "kills": 2275,
+        "pct": 11.07
+      },
+      "2:Pistol": {
+        "kills": 1392,
+        "pct": 6.77
+      },
+      "11:C4": {
+        "kills": 902,
+        "pct": 4.39
+      },
+      "7:SniperNoScope": {
+        "kills": 734,
+        "pct": 3.57
+      },
+      "15:Bow": {
+        "kills": 698,
+        "pct": 3.4
+      },
+      "6:Sniper": {
+        "kills": 622,
+        "pct": 3.03
+      },
+      "1:FallDamage": {
+        "kills": 448,
+        "pct": 2.18
+      },
+      "8:Melee (Pickaxe)": {
+        "kills": 391,
+        "pct": 1.9
+      },
+      "14:Minigun": {
+        "kills": 187,
+        "pct": 0.91
+      },
+      "10:Grenade": {
+        "kills": 167,
+        "pct": 0.81
+      }
+    }
+  },
+  "D1_killfeed_weapon_distances": {
+    "replays_parsed": 120,
+    "total_killfeed_elims": 7655,
+    "by_death_cause": {
+      "-1:Other": {
+        "kills": 1953,
+        "pct": 25.51,
+        "distance_m": {
+          "n": 1842,
+          "mean": 11.98,
+          "p25": 2.5,
+          "median": 5.59,
+          "p75": 13.62,
+          "p90": 31.22
+        }
+      },
+      "3:Shotgun": {
+        "kills": 1817,
+        "pct": 23.74,
+        "distance_m": {
+          "n": 1817,
+          "mean": 5.25,
+          "p25": 2.83,
+          "median": 4.63,
+          "p75": 6.81,
+          "p90": 9.36
+        }
+      },
+      "4:Rifle (AR)": {
+        "kills": 1111,
+        "pct": 14.51,
+        "distance_m": {
+          "n": 1111,
+          "mean": 19.97,
+          "p25": 4.18,
+          "median": 11.41,
+          "p75": 28.66,
+          "p90": 46.36
+        }
+      },
+      "5:SMG": {
+        "kills": 539,
+        "pct": 7.04,
+        "distance_m": {
+          "n": 539,
+          "mean": 5.68,
+          "p25": 2.2,
+          "median": 4.18,
+          "p75": 7.31,
+          "p90": 11.22
+        }
+      },
+      "11:C4": {
+        "kills": 475,
+        "pct": 6.21,
+        "distance_m": {
+          "n": 388,
+          "mean": 14.8,
+          "p25": 7.68,
+          "median": 11.27,
+          "p75": 17.02,
+          "p90": 25.79
+        }
+      },
+      "7:SniperNoScope": {
+        "kills": 309,
+        "pct": 4.04,
+        "distance_m": {
+          "n": 309,
+          "mean": 1.27,
+          "p25": 0.93,
+          "median": 1.19,
+          "p75": 1.52,
+          "p90": 1.79
+        }
+      },
+      "37:Other": {
+        "kills": 275,
+        "pct": 3.59,
+        "distance_m": {
+          "n": 0,
+          "mean": 0,
+          "p25": 0,
+          "median": 0,
+          "p75": 0,
+          "p90": 0
+        }
+      },
+      "2:Pistol": {
+        "kills": 258,
+        "pct": 3.37,
+        "distance_m": {
+          "n": 258,
+          "mean": 12.03,
+          "p25": 2.49,
+          "median": 4.88,
+          "p75": 9.12,
+          "p90": 28.86
+        }
+      },
+      "1:FallDamage": {
+        "kills": 189,
+        "pct": 2.47,
+        "distance_m": {
+          "n": 189,
+          "mean": 40.56,
+          "p25": 23.59,
+          "median": 30.17,
+          "p75": 45.44,
+          "p90": 71.24
+        }
+      },
+      "38:Other": {
+        "kills": 158,
+        "pct": 2.06,
+        "distance_m": {
+          "n": 0,
+          "mean": 0,
+          "p25": 0,
+          "median": 0,
+          "p75": 0,
+          "p90": 0
+        }
+      },
+      "6:Sniper": {
+        "kills": 147,
+        "pct": 1.92,
+        "distance_m": {
+          "n": 147,
+          "mean": 51.24,
+          "p25": 22.84,
+          "median": 44.35,
+          "p75": 71.45,
+          "p90": 97.32
+        }
+      },
+      "10:Grenade": {
+        "kills": 73,
+        "pct": 0.95,
+        "distance_m": {
+          "n": 61,
+          "mean": 32.2,
+          "p25": 15.16,
+          "median": 29.35,
+          "p75": 49.41,
+          "p90": 57.8
+        }
+      },
+      "15:Bow": {
+        "kills": 66,
+        "pct": 0.86,
+        "distance_m": {
+          "n": 24,
+          "mean": 34.09,
+          "p25": 2.71,
+          "median": 4.71,
+          "p75": 46.59,
+          "p90": 81.45
+        }
+      },
+      "8:Melee (Pickaxe)": {
+        "kills": 63,
+        "pct": 0.82,
+        "distance_m": {
+          "n": 43,
+          "mean": 19.14,
+          "p25": 8.39,
+          "median": 14.19,
+          "p75": 27.09,
+          "p90": 41.07
+        }
+      },
+      "12:GrenadeLauncher": {
+        "kills": 41,
+        "pct": 0.54,
+        "distance_m": {
+          "n": 32,
+          "mean": 14.03,
+          "p25": 7.09,
+          "median": 9.19,
+          "p75": 19.62,
+          "p90": 27.48
+        }
+      },
+      "9:InfinityBlade": {
+        "kills": 33,
+        "pct": 0.43,
+        "distance_m": {
+          "n": 21,
+          "mean": 27.59,
+          "p25": 11.87,
+          "median": 23.25,
+          "p75": 31.52,
+          "p90": 53.74
+        }
+      },
+      "16:Trap": {
+        "kills": 32,
+        "pct": 0.42,
+        "distance_m": {
+          "n": 14,
+          "mean": 20.57,
+          "p25": 4.75,
+          "median": 12.35,
+          "p75": 29.62,
+          "p90": 57.42
+        }
+      },
+      "0:OutsideSafeZone (Storm)": {
+        "kills": 25,
+        "pct": 0.33,
+        "distance_m": {
+          "n": 0,
+          "mean": 0,
+          "p25": 0,
+          "median": 0,
+          "p75": 0,
+          "p90": 0
+        }
+      },
+      "25:Biplane": {
+        "kills": 25,
+        "pct": 0.33,
+        "distance_m": {
+          "n": 10,
+          "mean": 37.69,
+          "p25": 10.15,
+          "median": 23.13,
+          "p75": 54.33,
+          "p90": 54.51
+        }
+      },
+      "22:ShoppingCart": {
+        "kills": 16,
+        "pct": 0.21,
+        "distance_m": {
+          "n": 15,
+          "mean": 5.93,
+          "p25": 3.15,
+          "median": 4.88,
+          "p75": 7.67,
+          "p90": 10.74
+        }
+      },
+      "24:QuadCrasher": {
+        "kills": 15,
+        "pct": 0.2,
+        "distance_m": {
+          "n": 7,
+          "mean": 15.28,
+          "p25": 10.12,
+          "median": 11.41,
+          "p75": 15.14,
+          "p90": 24.49
+        }
+      },
+      "14:Minigun": {
+        "kills": 14,
+        "pct": 0.18,
+        "distance_m": {
+          "n": 10,
+          "mean": 30.23,
+          "p25": 4.05,
+          "median": 4.74,
+          "p75": 22.28,
+          "p90": 37.65
+        }
+      },
+      "13:RocketLauncher": {
+        "kills": 10,
+        "pct": 0.13,
+        "distance_m": {
+          "n": 10,
+          "mean": 14.12,
+          "p25": 6.24,
+          "median": 6.98,
+          "p75": 21.31,
+          "p90": 33.23
+        }
+      },
+      "26:BiplaneGun": {
+        "kills": 8,
+        "pct": 0.1,
+        "distance_m": {
+          "n": 8,
+          "mean": 29.66,
+          "p25": 32.09,
+          "median": 35.04,
+          "p75": 39.15,
+          "p90": 41.74
+        }
+      },
+      "17:DBNOTimeout": {
+        "kills": 1,
+        "pct": 0.01,
+        "distance_m": {
+          "n": 0,
+          "mean": 0,
+          "p25": 0,
+          "median": 0,
+          "p75": 0,
+          "p90": 0
+        }
+      },
+      "23:ATK": {
+        "kills": 1,
+        "pct": 0.01,
+        "distance_m": {
+          "n": 0,
+          "mean": 0,
+          "p25": 0,
+          "median": 0,
+          "p75": 0,
+          "p90": 0
+        }
+      },
+      "36:Other": {
+        "kills": 1,
+        "pct": 0.01,
+        "distance_m": {
+          "n": 0,
+          "mean": 0,
+          "p25": 0,
+          "median": 0,
+          "p75": 0,
+          "p90": 0
+        }
+      }
+    }
+  },
+  "Fase_F_structures_and_mats": {
+    "total_player_structures_per_match": {
+      "n": 120,
+      "mean": 1.96,
+      "p25": 1,
+      "median": 1,
+      "p75": 2,
+      "p90": 3
+    },
+    "recorder_materials_used": {
+      "n": 301,
+      "mean": 231.54,
+      "p25": 40,
+      "median": 100,
+      "p75": 270,
+      "p90": 640
+    },
+    "recorder_pieces_built": {
+      "n": 301,
+      "mean": 23.15,
+      "p25": 4,
+      "median": 10,
+      "p75": 27,
+      "p90": 64
+    },
+    "recorder_materials_gathered": {
+      "n": 354,
+      "mean": 559.78,
+      "p25": 76,
+      "median": 215,
+      "p75": 672,
+      "p90": 1418
+    },
+    "top10_pieces_built": {
+      "n": 93,
+      "mean": 51.62,
+      "p25": 19,
+      "median": 36,
+      "p75": 68,
+      "p90": 99
+    },
+    "median_player_pieces_built": {
+      "n": 124,
+      "mean": 6.66,
+      "p25": 2,
+      "median": 4,
+      "p75": 8,
+      "p90": 15
+    }
+  },
+  "recorder_combat_stats": {
+    "accuracy_pct": {
+      "n": 308,
+      "mean": 32.7,
+      "p25": 14.29,
+      "median": 25.93,
+      "p75": 44,
+      "p90": 65.66
+    },
+    "top10_accuracy_pct": {
+      "n": 94,
+      "mean": 32.04,
+      "p25": 15.79,
+      "median": 26.53,
+      "p75": 43.17,
+      "p90": 59.22
+    },
+    "median_player_accuracy_pct": {
+      "n": 121,
+      "mean": 32.15,
+      "p25": 13.41,
+      "median": 25,
+      "p75": 42.55,
+      "p90": 66.67
+    },
+    "damage_to_players": {
+      "n": 317,
+      "mean": 738.15,
+      "p25": 72,
+      "median": 208,
+      "p75": 540,
+      "p90": 1247
+    },
+    "damage_to_structures": {
+      "n": 367,
+      "mean": 10342.93,
+      "p25": 1114,
+      "median": 4301,
+      "p75": 11117,
+      "p90": 26287
+    },
+    "eliminations": {
+      "n": 382,
+      "mean": 1.26,
+      "p25": 0,
+      "median": 1,
+      "p75": 2,
+      "p90": 3
+    },
+    "placement": {
+      "n": 382,
+      "mean": 29.65,
+      "p25": 10,
+      "median": 26,
+      "p75": 42,
+      "p90": 65
+    }
+  }
+}

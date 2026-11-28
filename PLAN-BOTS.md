@@ -80,6 +80,24 @@ Hoy: el 80% de las piezas son rampas para salir de atascos; ganar altura nunca s
 - ⏳ F1 Salir a cielo abierto antes de construir. F2 Altura piso a piso. F3 Suelos y conos, comprobar espacio arriba.
 - ⏳ F4 Varias formas de subir. F5 Construir en peleas (pared a cada disparo, rampear, cajas). F6 Ediciones.
 
+**Objetivo acordado (26/11/2026):** construcción sweat pero no excesiva, sin limitarse a cómo se jugaba en la Temporada 3 (90s, ramp push, cajas, ganar altura, alguna edición), escalada por nivel del bot.
+
+| Nivel | Qué hace | Piezas/s | Ediciones |
+|---|---|---|---|
+| Bajo (Trash/Easy) | Pared o rampa cuando le disparan, alguna caja | 2-3 | No |
+| Medio | Ramp rush con paredes, caja para curarse, gana altura si el enemigo está arriba | 3-4 | No |
+| Alto (Hard) | 90s para ganar altura, ramp push con paredes y suelos, dispara desde arriba | 5-6 | Alguna simple (ventana o rampa para asomarse) |
+| Sweat | Igual que Hard pero más rápido y decidiendo mejor; encadena varios 90s | 6-7 | Sí, más a menudo |
+
+Límites para que no parezca un robot:
+- Tiempo de reacción antes de construir (nunca en el mismo frame del disparo), con algo de variación.
+- Fallos ocasionales: pieza mal rotada, un 90 que no sale y hay que rehacer.
+- No encadena cajas sin fin: si lleva un rato sin sacar nada, sale a pelear o se reposiciona.
+- Gasta materiales de verdad y deja de construir con pocos.
+- Tope de altura: no subir sin motivo.
+
+Orden: primero que el bot se mueva bien por sus propias piezas sin depender del navmesh (input directo + comprobar en cada paso dónde está), después los 90s. Las piezas nuevas no deben forzar regenerar el navmesh deprisa (eso causaba los tirones del servidor). Cada paso se compara con las métricas de antes para que construir no empeore lo básico (caídas, atascos). Se empieza después de la fase D.
+
 ## Fase G — Ajuste fino ⏳
 - ⏳ G1 Utility AI. G2 Autoajuste nocturno de rasgos con objetivos humanos (niveles 3 y 9 = jugador medio / top 10%).
 - ❌ Usar los modelos de `ml/models` como cerebro (aprendieron reglas, no a los humanos) y el simulador 2D.

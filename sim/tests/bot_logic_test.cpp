@@ -70,6 +70,18 @@ int main()
     { auto T = S; T.Healing = 0.0f; T.Vitals = 35.0f; CHECK(!A::ShouldStartRetreat(T)); } // a low-Healing bot holds on longer
     { auto T = S; T.Healing = 1.0f; T.Vitals = 45.0f; CHECK(A::ShouldStartRetreat(T)); }
 
+    // Situational aim (AimSituationScale): settled, standing, calm = 1; each disadvantage widens it; skill narrows it.
+    {
+        A::FAimSituation Calm;
+        CHECK(A::AimSituationScale(Calm) > 0.99f && A::AimSituationScale(Calm) < 1.01f);
+        { auto T = Calm; T.OwnSpeed = 600.0f; CHECK(A::AimSituationScale(T) > 1.3f); }
+        { auto T = Calm; T.bUnderPressure = true; CHECK(A::AimSituationScale(T) > 1.2f); }
+        { auto T = Calm; T.bTargetAirborne = true; CHECK(A::AimSituationScale(T) > 1.4f); }
+        { auto T = Calm; T.TrackSeconds = 0.0f; CHECK(A::AimSituationScale(T) > 1.5f); }
+        { auto Lo = Calm, Hi = Calm; Lo.TrackSeconds = Hi.TrackSeconds = 0.3f; Lo.OwnSpeed = Hi.OwnSpeed = 600.0f; Lo.Accuracy = Lo.Tracking = 0.0f; Hi.Accuracy = Hi.Tracking = 1.0f;
+          CHECK(A::AimSituationScale(Lo) > A::AimSituationScale(Hi) && A::AimSituationScale(Hi) > 1.0f); }
+    }
+
     std::printf("%d checks, %d failed\n", Checks, Failures);
     return Failures == 0 ? 0 : 1;
 }

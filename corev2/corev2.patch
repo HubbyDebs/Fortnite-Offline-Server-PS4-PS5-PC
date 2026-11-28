@@ -473,7 +473,7 @@ index 3f80223..cd995bf 100644
  
  void UGameEngine::Hook()
 diff --git a/FortniteGame/Source/FortniteGame/Private/Athena/AI/AthenaNavSystem.cpp b/FortniteGame/Source/FortniteGame/Private/Athena/AI/AthenaNavSystem.cpp
-index 9e23339..2d8dfb1 100644
+index 9e23339..b5d44c7 100644
 --- a/FortniteGame/Source/FortniteGame/Private/Athena/AI/AthenaNavSystem.cpp
 +++ b/FortniteGame/Source/FortniteGame/Private/Athena/AI/AthenaNavSystem.cpp
 @@ -1,5 +1,6 @@
@@ -483,7 +483,15 @@ index 9e23339..2d8dfb1 100644
  #include "AI/Navigation/NavMeshBoundsVolume.h"
  #include "AI/Navigation/NavigationData.h"
  #include "AI/Navigation/NavigationSystem.h"
-@@ -42,13 +43,22 @@
+@@ -14,6 +15,7 @@
+ #include "Natives.h"
+ #include "Packed.h"
+ #include "PhysicsEngine/BodySetup.h"
++#include "ReflectionParams.h"
+ #include "UObject/Class.h"
+ #include "UObject/UObjectGlobals.h"
+ #include "UObject/UnrealType.h"
+@@ -42,13 +44,22 @@
  namespace
  {
      // 8.30's invoker tiles: the bot's surroundings (Core's radii ðŸŸ¡; 21.40 keeps a 5000 uu removal radius on its boxes).
@@ -508,7 +516,7 @@ index 9e23339..2d8dfb1 100644
      constexpr int32_t MaxTileGenerationJobs = 8;
  
      bool bInitialized = false;
-@@ -385,11 +395,19 @@ namespace
+@@ -385,11 +396,19 @@ namespace
  
      std::wstring TileCachePath(const FTileCacheKey& Key)
      {
@@ -529,7 +537,29 @@ index 9e23339..2d8dfb1 100644
          std::wstring Map = Key.Map;
          std::replace_if(Map.begin(), Map.end(), [](wchar_t Char) { return !std::iswalnum(Char) && Char != L'_' && Char != L'-'; }, L'_');
          return std::format(L"{}NavCache\\{}-{}-R{:.0f}-H{:.0f}.navcache", Directory, Key.Changelist, Map, Key.AgentRadius, Key.AgentHeight);
-@@ -1226,20 +1244,29 @@ namespace
+@@ -1158,6 +1177,21 @@ namespace
+         Key.TileSizeUU = RecastNavMesh->TileSizeUU;
+         Key.CellSize = RecastNavMesh->CellSize;
+         Key.CellHeight = RecastNavMesh->CellHeight;
++        // Fortnite-Offline-Server: what decides whether a house's stairs are in the navmesh (the bots broke floors to get
++        // down, with the search finding no way down in 84 of 92 cases): the agent's walkable slope and step, and the
++        // regions merged and dropped.
++        {
++            std::wstring Settings;
++            for (const wchar_t* Name : { L"AgentMaxSlope", L"AgentMaxStepHeight", L"AgentMaxHeight", L"MinRegionArea", L"MergeRegionSize", L"MaxSimplificationError" })
++            {
++                UProperty* Property = reinterpret_cast<UObject*>(NavData)->GetClass()->FindPropertyByName(FName(Name, FNAME_Find));
++                if (Property && Property->ElementSize == sizeof(float))
++                {
++                    Settings += std::format(L"{}{} {:.1f}", Settings.empty() ? L"" : L", ", Name, *reinterpret_cast<const float*>(reinterpret_cast<const uint8_t*>(NavData) + Property->GetOffset_ForInternal()));
++                }
++            }
++            Log::Info(L"Battle Royale navigation: the bots' navmesh {}: {}", NameOf(reinterpret_cast<UObject*>(NavData)), Settings.empty() ? std::wstring(L"no settings reflected") : Settings);
++        }
+         if (Key.Changelist == 0)
+         {
+             TileCache.bDisabled = true;
+@@ -1226,20 +1260,29 @@ namespace
  
      // The generator, found from the navmesh: ANavigationData's native pointer whose FRecastNavMeshGenerator's DestNavMesh is
      // this navmesh (NavDataGenerator, a TSharedPtr; 3.1 +0x3B0, which ARecastNavMesh::UpdateActiveTiles reads).
@@ -562,7 +592,7 @@ index 9e23339..2d8dfb1 100644
      }
  
      // Each frame once the navmesh is registered.
-@@ -1259,6 +1286,75 @@ namespace
+@@ -1259,6 +1302,49 @@ namespace
              Generator = TileCache.GeneratorOffset > 0 ? *reinterpret_cast<uint8_t* const*>(reinterpret_cast<const uint8_t*>(TileCache.NavData) + TileCache.GeneratorOffset) : nullptr;
          }
          TileCache.Generator = Generator;
@@ -608,37 +638,11 @@ index 9e23339..2d8dfb1 100644
 +                DetourNavMesh ? L"yes" : L"no", Generator ? L"yes" : L"no", TileCache.GeneratorOffset, TileCache.bRead, TileCache.bParamsKnown, TileCache.bPreloadStarted, TileCache.bPreloadDone,
 +                Generator ? ActiveTilesOf(Generator).Num() : -1, TileCache.Seen.size(), TileCache.InMesh.size(), TileCache.Base.size(), TileCache.Unwritten.size(), TileCache.TilesSaved,
 +                TileCache.TilesRebuilt, TileCache.TilesRestored);
-+            // Fortnite-Offline-Server (diagnostic, 7.40's cache saving nothing): every pointer in the navmesh whose object
-+            // points back at it at DestNavMesh, and in each, the arrays with elements (offset num/max), to find which one
-+            // holds the invokers' tiles. 7.40's AddGeneratedTiles (0x2F03BF0) tests [generator+0x28C] & 2 and walks
-+            // [generator+0x110] before adding a tile.
-+            const uint8_t* NavBase = reinterpret_cast<const uint8_t*>(TileCache.NavData);
-+            for (ptrdiff_t Offset = 0x318; NavBase && Offset < 0x5C8; Offset += sizeof(void*))
-+            {
-+                const uint8_t* Candidate = *reinterpret_cast<const uint8_t* const*>(NavBase + Offset);
-+                if (!Candidate || !Finder::IsReadable(Candidate, 0x400) || *reinterpret_cast<ANavigationData* const*>(Candidate + Natives::FRecastNavMeshGenerator_DestNavMesh) != TileCache.NavData)
-+                {
-+                    continue;
-+                }
-+                std::wstring Arrays;
-+                for (ptrdiff_t Member = 0; Member + 16 <= 0x400; Member += 8)
-+                {
-+                    const void* Data = *reinterpret_cast<const void* const*>(Candidate + Member);
-+                    const int32_t Num = *reinterpret_cast<const int32_t*>(Candidate + Member + 8);
-+                    const int32_t Max = *reinterpret_cast<const int32_t*>(Candidate + Member + 12);
-+                    if (Data && Num > 0 && Max >= Num && Max <= (1 << 22) && Finder::IsReadable(Data, 8))
-+                    {
-+                        Arrays += std::format(L" +{:#x} {}/{}", Member, Num, Max);
-+                    }
-+                }
-+                Log::Info(L"Battle Royale navigation: cache check: navmesh +{:#x} -> generator {}, restrict byte +0x28c {:#x}, arrays:{}", Offset, Candidate == Generator ? L"(the one used)" : L"(another)",
-+                    *(Candidate + 0x28C), Arrays.empty() ? std::wstring(L" none") : Arrays);
-+            }
 +        }
          if (!DetourNavMesh || !TileCache.Generator)
          {
              return;
-@@ -1533,6 +1629,26 @@ bool UAthenaNavSystem::InitializeForBots(UWorld* World, const FBox& IslandBounds
+@@ -1533,6 +1619,26 @@ bool UAthenaNavSystem::InitializeForBots(UWorld* World, const FBox& IslandBounds
  #endif
  }
  
@@ -665,7 +669,7 @@ index 9e23339..2d8dfb1 100644
  void UAthenaNavSystem::Tick(UWorld* World)
  {
  #if WITH_SERVER_CODE
-@@ -1630,6 +1746,27 @@ void UAthenaNavSystem::RegisterNavigationInvoker(AActor* Invoker)
+@@ -1630,6 +1736,27 @@ void UAthenaNavSystem::RegisterNavigationInvoker(AActor* Invoker)
      }
  }
  
@@ -695,10 +699,10 @@ index 9e23339..2d8dfb1 100644
      // Before the navmesh exists too (the warmup's structures), up to a bound (modes without bots never take them).
 diff --git a/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotAwareness.h b/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotAwareness.h
 new file mode 100644
-index 0000000..9e7485b
+index 0000000..1990fcc
 --- /dev/null
 +++ b/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotAwareness.h
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,138 @@
 +#pragma once
 +// Fortnite-Offline-Server: the player bots' hearing of gunfire and their low-health retreat, as plain numbers so they can
 +// be tested without the game (Fortnite-Offline-Server-PS4-PS5-PC: sim/tests/bot_logic_test.cpp). The ideas come from
@@ -803,9 +807,42 @@ index 0000000..9e7485b
 +        }
 +        return !(S.bEnemyInSight && S.EnemyVitals >= 0.0f && S.EnemyVitals + 10.0f < S.Vitals);
 +    }
++    // How much a shot's aim error grows with the moment (the idea of Syndicate's HitChance, MIT, as a spread multiplier):
++    // running while firing, hit a moment ago, a target in the air, and the first shots at a new target until it has
++    // tracked it (Settle seconds). Skill (AimAccuracy / AimTracking 0..1) lowers each cost, never to nothing.
++    struct FAimSituation
++    {
++        float OwnSpeed = 0.0f;          // the bot's own horizontal speed, cm/s
++        bool bUnderPressure = false;    // hit in the last 1.5 s
++        bool bTargetAirborne = false;   // the target is jumping or falling
++        float TrackSeconds = 10.0f;     // seconds since it acquired this target
++        float Accuracy = 0.5f;          // the AimAccuracy trait
++        float Tracking = 0.5f;          // the AimTracking trait
++    };
++
++    inline float AimSituationScale(const FAimSituation& S)
++    {
++        const float A = std::clamp(S.Accuracy, 0.0f, 1.0f);
++        const float T = std::clamp(S.Tracking, 0.0f, 1.0f);
++        const float Run = std::clamp(S.OwnSpeed / 600.0f, 0.0f, 1.0f);
++        float Scale = 1.0f + (0.6f - 0.4f * A) * Run;
++        if (S.bUnderPressure)
++        {
++            Scale *= 1.4f - 0.25f * A;
++        }
++        if (S.bTargetAirborne)
++        {
++            Scale *= 1.6f - 0.3f * T;
++        }
++        const float Settle = 2.0f - 1.25f * T;
++        const float First = 1.8f - 0.45f * A;
++        const float Settled = std::clamp(S.TrackSeconds / Settle, 0.0f, 1.0f);
++        Scale *= First + (1.0f - First) * Settled;
++        return Scale;
++    }
 +}
 diff --git a/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotController.cpp b/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotController.cpp
-index d0d4fd2..134582b 100644
+index d0d4fd2..f96a9e9 100644
 --- a/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotController.cpp
 +++ b/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotController.cpp
 @@ -10,6 +10,7 @@
@@ -833,7 +870,7 @@ index d0d4fd2..134582b 100644
      // EFortMovementStyle.
      constexpr uint8_t StyleRunning = 0;
      constexpr uint8_t StyleWalking = 1;
-@@ -902,13 +906,37 @@ namespace
+@@ -902,13 +906,54 @@ namespace
          }
      }
  
@@ -846,14 +883,31 @@ index d0d4fd2..134582b 100644
 +        float Min;
 +        float Max;
 +    };
++    // Fortnite-Offline-Server: the farthest a bot opens fire with a gun made for close range. Season 3's kill feed (1185
++    // kills, ml/models/s3): shotguns 3.4-8.9 m (middle half), SMGs 3.9-8.9 m, pistols 3.8-12.1 m; the bots' SMG and pistol
++    // kills came from 18 and 13 m. Farther, it closes in (or its weapon choice takes another gun) instead of spraying.
++    float MaxFireDistance(ECoreAthenaBotWeaponType Type)
++    {
++        switch (Type)
++        {
++        case ECoreAthenaBotWeaponType::Shotgun: return 1500.0f;
++        case ECoreAthenaBotWeaponType::SMG: return 2200.0f;
++        case ECoreAthenaBotWeaponType::Pistol: return 1800.0f;
++        // Season 3's AR kills: 90% within 47 m; the bots fired half their AR shots past 35 m and hit 6% of those.
++        case ECoreAthenaBotWeaponType::AssaultRifle: return 4500.0f;
++        default: return 1.0e9f;
++        }
++    }
++
 +    FFightRange FightRangeOf(ECoreAthenaBotWeaponType Type)
 +    {
 +        switch (Type)
 +        {
 +        case ECoreAthenaBotWeaponType::Shotgun: return { 250.0f, 700.0f };
 +        case ECoreAthenaBotWeaponType::SMG: return { 250.0f, 800.0f };
-+        case ECoreAthenaBotWeaponType::Pistol: return { 300.0f, 1000.0f };
-+        case ECoreAthenaBotWeaponType::AssaultRifle: return { 500.0f, 2500.0f };
++        case ECoreAthenaBotWeaponType::Pistol: return { 250.0f, 700.0f };
++        // Season 3's assault rifle kills: 5.1-27.4 m, median 11 m (the bots': 23 m, then 18 m holding 5-18 m).
++        case ECoreAthenaBotWeaponType::AssaultRifle: return { 400.0f, 1300.0f };
 +        case ECoreAthenaBotWeaponType::Sniper: return { 2000.0f, 8000.0f };
 +        // A launcher's blast takes its shooter within 5 m (bLauncherTooClose).
 +        case ECoreAthenaBotWeaponType::Launcher: return { 800.0f, 3000.0f };
@@ -872,7 +926,7 @@ index d0d4fd2..134582b 100644
              { 4.0f, 6.0f, 5.0f },  // AssaultRifle
              { 6.0f, 2.0f, 0.5f },  // Shotgun
              { 1.0f, 2.5f, 6.0f },  // Sniper
-@@ -1017,7 +1045,7 @@ namespace
+@@ -1017,7 +1062,7 @@ namespace
      // the revive's own 60 m search being about as far).
      constexpr float ReviveEngageRange = 5000.0f;
      // Low on health (health and shield together, Core's 🟡): what makes a bot without healing items look for some first.
@@ -881,7 +935,7 @@ index d0d4fd2..134582b 100644
  
      // Giving a knocked (DBNO) enemy time before thirsting it (CoreV2 #233), so a teammate can revive: the base hold-off
      // after the knock; the longer hold-off while a squadmate is right there (a revive could be underway); how close a
-@@ -1031,13 +1059,13 @@ namespace
+@@ -1031,13 +1076,13 @@ namespace
      // How long a bot remembers an enemy that went out of sight (CoreV2 #349): 8.30's perception keeps a sight
      // stimulus until its max age, and the bot aims at and closes in on its last known position meanwhile (21.40's
      // GetLastKnownPosition). Core's 🟡: 5 s.
@@ -897,7 +951,7 @@ index d0d4fd2..134582b 100644
      constexpr int32_t MaxHuntersPerPlayer = 3;
  
      // A bot carries up to this many guns (a player's five quickbar slots, two kept for healing items).
-@@ -1402,6 +1430,11 @@ FCoreAthenaBotController::FCoreAthenaBotController(FCoreAthenaBotManager* InMana
+@@ -1402,6 +1447,11 @@ FCoreAthenaBotController::FCoreAthenaBotController(FCoreAthenaBotManager* InMana
  {
  }
  
@@ -909,7 +963,7 @@ index d0d4fd2..134582b 100644
  void FCoreAthenaBotController::ResetForNewMatch()
  {
      HotDrop = FVector();
-@@ -1409,6 +1442,7 @@ void FCoreAthenaBotController::ResetForNewMatch()
+@@ -1409,6 +1459,7 @@ void FCoreAthenaBotController::ResetForNewMatch()
      CueTags.clear();
      WeaponFireWorks.clear();
      ShotStats = FBotShotStats();
@@ -917,7 +971,7 @@ index d0d4fd2..134582b 100644
  }
  
  AAIController* FCoreAthenaBotController::GetController() const
-@@ -1484,10 +1518,10 @@ void FCoreAthenaBotController::AssignDisplayName(const std::wstring& Name)
+@@ -1484,10 +1535,10 @@ void FCoreAthenaBotController::AssignDisplayName(const std::wstring& Name)
      State->ForceNetUpdate();
  }
  
@@ -931,7 +985,7 @@ index d0d4fd2..134582b 100644
  }
  
  bool FCoreAthenaBotController::SpawnPawnAt(const FVector& Location, float Yaw, bool bSkydive)
-@@ -1873,6 +1907,10 @@ void FCoreAthenaBotController::EnterAircraft(AFortAthenaAircraft* InAircraft, fl
+@@ -1873,6 +1924,10 @@ void FCoreAthenaBotController::EnterAircraft(AFortAthenaAircraft* InAircraft, fl
      PlayerBotPawn = nullptr;
      // The warmup's pickups don't come along (ResetToStartingItems takes a player's).
      ClearInventory();
@@ -942,7 +996,7 @@ index d0d4fd2..134582b 100644
      SetTargeting(false);
      CurrentTarget = nullptr;
      WarmupRespawnTime = -1.0f;
-@@ -2380,6 +2418,17 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
+@@ -2380,6 +2435,17 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
          {
              Killer = LastAttacker.Get();
          }
@@ -960,7 +1014,7 @@ index d0d4fd2..134582b 100644
          // Bled out while down: the one who knocked it is its eliminator.
          Manager->RemoveFromAliveBots(this, Killer ? Killer : BotKiller ? BotKiller : Downer.Get());
          return;
-@@ -2400,6 +2449,40 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
+@@ -2400,6 +2466,89 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
      }
  
      LastKnownPosition = LocationOf(Pawn);
@@ -972,6 +1026,35 @@ index d0d4fd2..134582b 100644
 +        if (StatsMovement && BuildQueue.Descriptors.empty() && static_cast<FVector>(StatsMovement->Velocity).Size() < 50.0f)
 +        {
 +            StillSeconds += DeltaSeconds;
++            std::wstring StillKey = LastIntent && *LastIntent ? std::wstring(LastIntent) : std::wstring(L"none");
++            if (StillKey == L"harvest" || HarvestTarget.Get())
++            {
++                StillKey = bHarvestToUnstick ? L"harvest (break-through)" : L"harvest (materials)";
++            }
++            StillSecondsByIntent[StillKey] += DeltaSeconds;
++            if (StillSpellStart < 0.0f)
++            {
++                StillSpellStart = Now;
++                StillSpellKey = StillKey;
++                const AFortPickup* Pick = LootTarget.Get();
++                const float PickDistance = Pick ? Dist2D(LocationOf(const_cast<AFortPickup*>(Pick)), LastKnownPosition) : -1.0f;
++                StillSpellWhy = std::format(L"{} | {} | {} | {} | {}", Now - LastPathRequest < 0.3f ? L"new path" : L"old path", Now - LootTargetTime < 0.3f ? L"new target" : L"same target",
++                    bPathFollowing ? L"path" : (SteerReason && *SteerReason ? SteerReason : L"steer?"),
++                    !Pick ? L"no target" : PickDistance < 200.0f ? L"<2m" : PickDistance < 500.0f ? L"2-5m" : PickDistance < 1500.0f ? L"5-15m" : L"15m+",
++                    HealingItem ? L"healing" : bFiring ? L"firing" : CurrentTarget.Get() ? L"enemy" : L"-");
++            }
++        }
++        else if (StillSpellStart >= 0.0f)
++        {
++            const float Spell = Now - StillSpellStart;
++            auto& Entry = StillSpells[StillSpellKey + (Spell < 1.0f ? L" <1s" : Spell < 3.0f ? L" 1-3s" : Spell < 8.0f ? L" 3-8s" : L" 8s+")];
++            ++Entry.first;
++            Entry.second += Spell;
++            if (StillSpellKey == L"loot" && Spell < 1.0f)
++            {
++                ++LootStops[StillSpellWhy];
++            }
++            StillSpellStart = -1.0f;
 +        }
 +        if (bPickaxeEquipped)
 +        {
@@ -988,6 +1071,26 @@ index d0d4fd2..134582b 100644
 +        if (StatsMovement && StatsMovement->MovementMode == MoveFalling && !Pawn->bIsSkydiving && !Pawn->bIsParachuteOpen)
 +        {
 +            LastFallingTime = Now;
++            if (!bFallNoted)
++            {
++                bFallNoted = true;
++                FallFrom = LastKnownPosition;
++                AAIController* FallController = Controller.Get();
++                const FVector Next = bPathFollowing && FallController ? FallController->GetImmediateMoveDestination() : FVector();
++                const FVector FallVelocity = StatsMovement->Velocity;
++                FallWhy = std::format(L"intent {}, {} (next point ({:.0f}, {:.0f}, {:.0f}) {:.0f} m away), velocity ({:.0f}, {:.0f}, {:.0f}), steer jump cooldown {}, harvesting {}, goal ({:.0f}, {:.0f}, {:.0f})",
++                    LastIntent && *LastIntent ? LastIntent : L"?", bPathFollowing ? L"on a path" : (SteerReason && *SteerReason ? SteerReason : L"steering"), Next.X, Next.Y, Next.Z,
++                    bPathFollowing ? Dist2D(LastKnownPosition, Next) / 100.0f : 0.0f, FallVelocity.X, FallVelocity.Y, FallVelocity.Z, NextJumpTime > Now ? L"on" : L"off",
++                    HarvestTarget.Get() ? NameOf(reinterpret_cast<UObject*>(HarvestTarget.Get())) : std::wstring(L"nothing"), MoveGoal.X, MoveGoal.Y, MoveGoal.Z);
++            }
++        }
++        else if (bFallNoted && StatsMovement && StatsMovement->MovementMode == MoveWalking)
++        {
++            bFallNoted = false;
++            if (FallFrom.Z - LastKnownPosition.Z >= 1000.0f)
++            {
++                LogFall(LastKnownPosition, L"lands");
++            }
 +        }
 +        if (bPathFollowing)
 +        {
@@ -1001,7 +1104,7 @@ index d0d4fd2..134582b 100644
      if (!bRegisteredInvoker && Manager->HasNavigation())
      {
          // 8.30's bots are their own navigation invokers: the navmesh is generated around them.
-@@ -2547,7 +2630,21 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
+@@ -2547,7 +2696,21 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
          SetTargeting(false);
          Intent = L"build";
      }
@@ -1024,7 +1127,7 @@ index d0d4fd2..134582b 100644
      {
          StopFiring();
          SetTargeting(false);
-@@ -2562,6 +2659,11 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
+@@ -2562,6 +2725,11 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
          {
              Intent = L"harvest";
          }
@@ -1036,7 +1139,7 @@ index d0d4fd2..134582b 100644
          else if (bHeadingForSafeZone && Storm(Now))
          {
              Intent = L"storm";
-@@ -2611,6 +2713,11 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
+@@ -2611,6 +2779,11 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
              Intent = L"chase";
              MoveTowards(LastSeenTargetLocation, Now, 250.0f);
          }
@@ -1048,7 +1151,15 @@ index d0d4fd2..134582b 100644
          else
          {
              Intent = ChooseGoal(Now);
-@@ -2640,6 +2747,14 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
+@@ -2624,6 +2797,7 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
+             StopHarvesting();
+         }
+     }
++    LastIntent = Intent;
+     // A slow decision (a hitch in the summary) is named, with what the bot was doing.
+     if (const double DecisionMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - DecisionStarted).count(); DecisionMs > 50.0)
+     {
+@@ -2640,6 +2814,14 @@ void FCoreAthenaBotController::Tick(float Now, float DeltaSeconds)
      {
          bLoggedMovement = true;
          LogMovementDiagnostics();
@@ -1063,7 +1174,31 @@ index d0d4fd2..134582b 100644
      }
  
      if (Now >= NextLogTime)
-@@ -3100,7 +3215,7 @@ void FCoreAthenaBotController::UpdateCurrentTarget(float Now)
+@@ -2703,7 +2885,23 @@ void FCoreAthenaBotController::JumpOffBus(float Now)
+     }
+     else if (!Near.empty())
+     {
++        // Fortnite-Offline-Server: not loot under something it would land on more than 10 m up (a pine's crown, the dock
++        // tower's top): bots landed there and fell 30-40 m breaking or walking off it (3.6, about 1 bot in 75). The sky
++        // over the pick is looked at from 80 m up; up to 6 picks.
++        UObject* TraceContext = Aircraft ? reinterpret_cast<UObject*>(Aircraft) : reinterpret_cast<UObject*>(Manager->GetGameMode());
++        const auto OpenAbove = [TraceContext](const FVector& Spot)
++        {
++            FVector Hit;
++            UObject* HitActor = nullptr;
++            UObject* HitComponent = nullptr;
++            return !TraceContext || !UKismetSystemLibrary::LineTraceSingle(TraceContext, FVector(Spot.X, Spot.Y, Spot.Z + 8000.0f), FVector(Spot.X, Spot.Y, Spot.Z + 1000.0f),
++                0, false, true, Hit, HitActor, HitComponent);
++        };
+         DropTarget = Near[static_cast<size_t>(FMath::Rand()) % Near.size()];
++        for (int32_t Try = 1; Try < 6 && !OpenAbove(DropTarget); ++Try)
++        {
++            DropTarget = Near[static_cast<size_t>(FMath::Rand()) % Near.size()];
++        }
+         if (Configuration::Get().bBotHotDrop && !bHasHotDrop)
+         {
+             HotDrop = DropTarget;
+@@ -3100,7 +3298,7 @@ void FCoreAthenaBotController::UpdateCurrentTarget(float Now)
      // Nor is one that just ducked behind cover: the bot remembers it for TargetMemoryAge and RangeAttack aims at where
      // it last saw it (it forgot the enemy the moment the line of sight broke, CoreV2 #349). A downed one it is giving
      // time to (ShouldDeferThirst) is let go, as above.
@@ -1072,7 +1207,7 @@ index d0d4fd2..134582b 100644
          && (LocationOf(Previous) - Location).Size() <= AIBotSkills.SightRange && (!Previous->bIsDBNO || !ShouldDeferThirst(Previous, Now)))
      {
          NewTarget = Previous;
-@@ -3141,7 +3256,8 @@ bool FCoreAthenaBotController::WillEngageBot(FCoreAthenaBotController* Other, fl
+@@ -3141,7 +3339,8 @@ bool FCoreAthenaBotController::WillEngageBot(FCoreAthenaBotController* Other, fl
      Hash ^= Hash >> 13;
      Hash *= 0x5bd1e995u;
      Hash ^= Hash >> 15;
@@ -1082,16 +1217,183 @@ index d0d4fd2..134582b 100644
      const int32_t Chance = Manager->GetAliveBotCount() <= LateGameBotCount ? std::min(BaseChance * 2, 100) : BaseChance;
      return static_cast<int32_t>(Hash % 100u) < Chance;
  }
-@@ -3543,7 +3659,7 @@ void FCoreAthenaBotController::ManageWeapon(float Now)
+@@ -3321,7 +3520,24 @@ bool FCoreAthenaBotController::WantsPickup(UFortItemDefinition* Definition, bool
+ {
+     if (bWeapon)
+     {
+-        return WeaponSlotFor(Cast<UFortWeaponItemDefinition>(Definition)) != -2;
++        // Fortnite-Offline-Server: a player walks past most guns: an assault rifle, an SMG or a shotgun better than the one
++        // it has of that kind (WeaponSlotFor: rarity, then damage a second); anything else (a pistol, a sniper, a grenade, a
++        // launcher) only with nothing to shoot with yet, until a gun of those kinds comes. The bots took every gun, ammo of
++        // every kind and every pile of materials: 20-40 stops a match, 7% of their time on the ground standing to loot.
++        UFortWeaponItemDefinition* WeaponDefinition = Cast<UFortWeaponItemDefinition>(Definition);
++        if (!WeaponDefinition)
++        {
++            return false;
++        }
++        const ECoreAthenaBotWeaponType Type = GetWeaponInfo(WeaponDefinition).Type;
++        const bool bWanted = Type == ECoreAthenaBotWeaponType::AssaultRifle || Type == ECoreAthenaBotWeaponType::SMG || Type == ECoreAthenaBotWeaponType::Shotgun;
++        // A gun of a kind it already carries (one it took unarmed) is still swapped for a better one (WeaponSlotFor).
++        const bool bCarriesKind = std::any_of(WeaponList.begin(), WeaponList.end(), [Type](const FCoreAthenaBotWeapon& Held) { return Held.Type == Type; });
++        if (!bWanted && !WeaponList.empty() && !bCarriesKind)
++        {
++            return false;
++        }
++        return WeaponSlotFor(WeaponDefinition) != -2;
+     }
+     if (bConsumable)
+     {
+@@ -3331,16 +3547,23 @@ bool FCoreAthenaBotController::WantsPickup(UFortItemDefinition* Definition, bool
+     }
+     // Materials (wood, stone, metal on the floor: a chest's or an eliminated player's) up to the stack a player holds
+     // (CoreV2 #252: searched houses kept their floor loot).
++    // Fortnite-Offline-Server: only while low on that material (under 100): the pickaxe gathers the rest. None in Zero Build.
+     if (const int32_t Kind = MaterialKindOf(Definition); Kind >= 0)
+     {
+-        return Materials[Kind] < std::max(static_cast<int32_t>(Definition->MaxStackSize), 1);
++        if (FCoreAthenaBotManager::bZeroBuild)
++        {
++            return false;
++        }
++        return Materials[Kind] < std::min(std::max(static_cast<int32_t>(Definition->MaxStackSize), 1), 100);
+     }
+     // Ammo for its guns, a reserve of 120; with a free weapon slot, a little of the other kinds too, for the gun it
+     // finds next (a player sweeps an ammo box's spill whole).
+     const auto Reserve = Ammo.find(Definition);
+     const int32_t Held = Reserve != Ammo.end() ? Reserve->second : 0;
+     const bool bForItsGuns = std::any_of(WeaponList.begin(), WeaponList.end(), [Definition](const FCoreAthenaBotWeapon& Weapon) { return Weapon.AmmoDefinition == Definition; });
+-    return Cast<UFortAmmoItemDefinition>(Definition) && (bForItsGuns ? Held < 120 : WeaponList.size() < MaxWeapons && Held < 30);
++    // Fortnite-Offline-Server: only its guns' ammo (another kind's was a stop for a gun it might never take); unarmed, a
++    // little of any, for the first gun it finds.
++    return Cast<UFortAmmoItemDefinition>(Definition) && (bForItsGuns ? Held < 120 : WeaponList.empty() && Held < 30);
+ }
+ 
+ UFortItemDefinition* FCoreAthenaBotController::ConsumableToSwapFor(UFortItemDefinition* Definition)
+@@ -3443,6 +3666,16 @@ bool FCoreAthenaBotController::IsUnderThreat(float Now) const
+     return Now - LastHurtTime < 2.0f || (Target && Pawn && bHasVisualLineOfSightOnTarget && (LocationOf(Target) - LocationOf(Pawn)).Size() < 2000.0f);
+ }
+ 
++bool FCoreAthenaBotController::IsHealBlocked(float Now) const
++{
++    // In cover after a retreat: blocked by an enemy in sight or a hit in the last 1.5 s; otherwise by any fight.
++    if (bHealingInCover)
++    {
++        return (CurrentTarget.Get() && bHasVisualLineOfSightOnTarget) || Now - LastHurtTime < 1.5f;
++    }
++    return IsInCombat(Now);
++}
++
+ bool FCoreAthenaBotController::IsInCombat(float Now) const
+ {
+     return (CurrentTarget.Get() && bHasVisualLineOfSightOnTarget) || Now - LastHurtTime < 4.0f;
+@@ -3534,16 +3767,54 @@ void FCoreAthenaBotController::ManageWeapon(float Now)
+     if (Target && bHasVisualLineOfSightOnTarget && Now >= NextWeaponSwitch)
+     {
+         const float Distance = (LocationOf(Target) - LastKnownPosition).Size();
+-        const int32_t ForRange = WeaponIndexForRange(Distance);
++        int32_t ForRange = WeaponIndexForRange(Distance);
++        // Fortnite-Offline-Server: Season 3's fights: an assault rifle's spray, then a push with the pump (shotguns 31% of
++        // the kill feed, assault rifles 21%; the bots' 39% and 60% once they stood to shoot from range). Each new enemy, a
++        // bot pushes or not by its Aggression (15-45%, 30% for a level's bots; 45% sent 73% of the kills to shotguns):
++        // pushing, from 6 to 22 m it takes out a loaded shotgun (else an SMG) and sprints in (RangeAttack, WantsToSprintIn).
++        if (static_cast<const void*>(Target) != PushRolledFor)
++        {
++            PushRolledFor = Target;
++            bPushing = FMath::FRand() < 0.15f + 0.3f * std::clamp(AIBotSkills.Traits.Aggression, 0.0f, 1.0f);
++        }
++        // Hit with little left (under 100 health and shield), it stops pushing and fights back from where it is.
++        if (bPushing && Now - LastHurtTime < 1.0f)
++        {
++            if (AFortPlayerPawnAthena* Self = GetPawn(); Self && Self->GetHealth() + Self->GetShield() < 100.0f)
++            {
++                bPushing = false;
++            }
++        }
++        const auto IsCloseGun = [](ECoreAthenaBotWeaponType Type) { return Type == ECoreAthenaBotWeaponType::Shotgun || Type == ECoreAthenaBotWeaponType::SMG; };
++        bool bPushSwap = false;
++        // Only where it can run in (no 4 m above or below it, not just blocked: WantsToSprintIn), and from 22 m (from 35 m
++        // it ran 4-5 s in the open into an assault rifle without firing back).
++        if (bPushing && Distance > 600.0f && Distance < 2200.0f && Now >= SprintBlockedUntil && std::fabs(LocationOf(Target).Z - LastKnownPosition.Z) <= 400.0f)
++        {
++            int32_t Close = -1;
++            for (size_t Index = 0; Index < WeaponList.size(); ++Index)
++            {
++                const FCoreAthenaBotWeapon& Gun = WeaponList[Index];
++                if (Gun.LoadedAmmo > 0 && IsCloseGun(Gun.Type) && (Close < 0 || Gun.Type == ECoreAthenaBotWeaponType::Shotgun))
++                {
++                    Close = static_cast<int32_t>(Index);
++                }
++            }
++            if (Close >= 0)
++            {
++                ForRange = Close;
++                bPushSwap = EquippedIndex < 0 || EquippedIndex >= static_cast<int32_t>(WeaponList.size()) || !IsCloseGun(WeaponList[static_cast<size_t>(EquippedIndex)].Type);
++            }
++        }
+         if (ForRange >= 0 && ForRange != EquippedIndex)
+         {
+             const FCoreAthenaBotWeapon& Next = WeaponList[static_cast<size_t>(ForRange)];
+             // A loaded weapon that suits the range as well stays out: only a clearly better one is worth the swap.
+             const int32_t Band = Distance < 1000.0f ? 0 : Distance < 3500.0f ? 1 : 2;
              // A margin past the held gun's range keeps a target at the edge of it from swapping guns back and forth.
-             if (Entry.LoadedAmmo == 0 || RangePreference(Next.Type, Band) > RangePreference(Entry.Type, Band) + 0.5f || Distance > Entry.EquipMaxDistance * 1.2f)
+-            if (Entry.LoadedAmmo == 0 || RangePreference(Next.Type, Band) > RangePreference(Entry.Type, Band) + 0.5f || Distance > Entry.EquipMaxDistance * 1.2f)
++            if (bPushSwap || Entry.LoadedAmmo == 0 || RangePreference(Next.Type, Band) > RangePreference(Entry.Type, Band) + 0.5f || Distance > Entry.EquipMaxDistance * 1.2f)
              {
 -                NextWeaponSwitch = Now + 3.0f;
 +                NextWeaponSwitch = Now + 1.5f;
                  static int32_t LoggedSwitches = 0;
                  if (LoggedSwitches++ < 10)
                  {
-@@ -4336,6 +4452,30 @@ void FCoreAthenaBotController::CheckWeaponFireResult(float Now)
+@@ -3561,6 +3832,34 @@ void FCoreAthenaBotController::ManageWeapon(float Now)
+     const bool bHasReserve = Reserve != Ammo.end() && Reserve->second > 0;
+     if (Entry.LoadedAmmo <= 0)
+     {
++        // Fortnite-Offline-Server: empty in a fight with the enemy in sight, a player swaps to a loaded gun (shotgun to
++        // SMG or AR) rather than reload in front of them: the loaded one that suits the range best, if any.
++        // (Out of ammo for it altogether too: a loaded gun first, before WeaponIndexForRange picks one to reload.)
++        if (Target && bHasVisualLineOfSightOnTarget)
++        {
++            const float Distance = (LocationOf(Target) - LastKnownPosition).Size();
++            const int32_t Band = Distance < 1000.0f ? 0 : Distance < 3500.0f ? 1 : 2;
++            int32_t Loaded = -1;
++            float BestPreference = 1.5f;
++            for (size_t Index = 0; Index < WeaponList.size(); ++Index)
++            {
++                const FCoreAthenaBotWeapon& Other = WeaponList[Index];
++                if (static_cast<int32_t>(Index) != EquippedIndex && Other.LoadedAmmo > 0 && !(Other.Type == ECoreAthenaBotWeaponType::Launcher && Distance < 600.0f)
++                    && RangePreference(Other.Type, Band) > BestPreference)
++                {
++                    BestPreference = RangePreference(Other.Type, Band);
++                    Loaded = static_cast<int32_t>(Index);
++                }
++            }
++            if (Loaded >= 0)
++            {
++                NextWeaponSwitch = Now + 1.0f;
++                EquipWeapon(Loaded);
++                ++WeaponSwitches;
++                NextShotTime = std::max(NextShotTime, Now + 0.4f);
++                return;
++            }
++        }
+         if (bHasReserve)
+         {
+             StartReload(Now);
+@@ -3686,10 +3985,12 @@ void FCoreAthenaBotController::FireShot(AFortPawn* Target, float Distance)
+     const bool bClear = HasClearShot(Pawn, Eye, bHit ? Center : ShotEnd, Target, &Blocker, &BlockedAt);
+     const bool bOnTarget = bHit;
+     bHit = bHit && bClear;
+-    if (Held)
++    if (Held && !bWarmupBrawl)
+     {
+         RecordShot(Held->Type, Distance, bHit);
+     }
++    ++BurstShots;
++    LastBurstShot = Manager->GetGameMode() ? Manager->GetGameMode()->GetWorld()->GetTimeSeconds() : LastBurstShot;
+     // A launcher's shot is its rocket, the game's projectile (FireProjectile, Core-Backend #371: the bots' rockets were
+     // traced shots, unseen, that hurt without an explosion). The warmup brawl's is too, but for show (#452): its rocket
+     // carries none of the fire ability's effects, so it flies and goes off without hurting anyone, where the game mode
+@@ -4336,6 +4637,30 @@ void FCoreAthenaBotController::CheckWeaponFireResult(float Now)
          bWorks ? L"works, the game fires it" : L"spent no ammo, Core fires it", WeaponFireAmmoBefore, AmmoNow, NameOf(static_cast<UObject*>(Weapon->ActiveAbility)));
  }
  
@@ -1122,7 +1424,7 @@ index d0d4fd2..134582b 100644
  bool FCoreAthenaBotController::RangeAttack(float Now)
  {
  #if WITH_SERVER_CODE
-@@ -4375,6 +4515,12 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+@@ -4375,6 +4700,12 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
                  Pawn->bIsSkydiving ? L"yes" : L"no", Pawn->bIsParachuteOpen ? L"open" : L"closed");
          }
      }
@@ -1135,7 +1437,7 @@ index d0d4fd2..134582b 100644
      // A player who boxed themselves in: the bot saw them a moment ago, and what blocks the view now is a player's
      // build right around them. It keeps at them and shoots through the walls (a shot a build stops damages the piece),
      // or swings its pickaxe at them, until they break.
-@@ -4385,7 +4531,7 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+@@ -4385,7 +4716,7 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
              // Behind cover: while it remembers the enemy (UpdateCurrentTarget), an armed bot holds its aim on where it
              // last saw it, aiming down sights without firing, and closes in on that spot (CoreV2 #349). The storm comes
              // first.
@@ -1144,11 +1446,90 @@ index d0d4fd2..134582b 100644
              {
                  return false;
              }
-@@ -4482,14 +4628,23 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+@@ -4421,12 +4752,21 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+ 
+     // Reaction (21.40's TrackingReactionTime): a new target, or one seen again after a second out of sight, isn't shot
+     // at before the bot has reacted to it (RangeAttack's bReady waits MaxTrackingReactionTime from TargetAcquiredTime).
++    if (Now - LastTargetInSightTime > 0.5f)
++    {
++        bSprintingIn = false;
++        SprintCheckTime = -1.0f;
++    }
+     if (Target != TrackedTarget.Get() || Now - LastTargetInSightTime > 1.0f)
+     {
+         TrackedTarget = Target;
+         TrackedTargetLocation = TargetLocation;
+         TargetAcquiredTime = Now;
+         LastTrackTime = Now;
++        // Fortnite-Offline-Server: a new or regained target starts its own approach (a sprint from an earlier fight
++        // counted as no progress on its first frame and blocked the run for 4 s).
++        bSprintingIn = false;
++        SprintCheckTime = -1.0f;
+     }
+     // Tracking (TrackingInterpTime): the aim follows the target with a lag, so a target on the move (strafing, running
+     // past) is aimed at where it was a moment ago and missed more, as a player's tracking falls behind.
+@@ -4438,10 +4778,41 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+     }
+     // The aim error (FWeaponAccuracy's MaxTrackingOffsetError and the near and far distance errors), drawn for every
+     // shot: a normal spread across the line of fire, a base plus a share that grows with the range, more beyond 25 m.
+-    if (Now >= NextShotTime || AimError.SizeSquared() == 0.0f)
+-    {
+-        const float Spread = AIBotSkills.MaxTrackingOffsetError + AIBotSkills.MaxTrackingDistanceNearError * std::min(Distance, 2500.0f) / 1000.0f
+-            + AIBotSkills.MaxTrackingDistanceFarError * std::max(Distance - 2500.0f, 0.0f) / 1000.0f;
++    // Fortnite-Offline-Server: drawn once a shot (for its NextShotTime) and on a new target: drawn every frame while the
++    // bot waited to fire (facing, reaction, reload), its aim shook. The spread depends on the gun (an SMG's and a
++    // pistol's hip fire spread more, a sniper's scope less) and grows over a burst (the held trigger's bloom, up to half
++    // again after 6 shots).
++    if (AimError.SizeSquared() == 0.0f || AimErrorShotTime != NextShotTime || AimErrorTarget != static_cast<const void*>(Target))
++    {
++        AimErrorShotTime = NextShotTime;
++        AimErrorTarget = Target;
++        const FCoreAthenaBotWeapon* Gun = !bPickaxeEquipped && EquippedIndex >= 0 && EquippedIndex < static_cast<int32_t>(WeaponList.size()) ? &WeaponList[static_cast<size_t>(EquippedIndex)] : nullptr;
++        const ECoreAthenaBotWeaponType GunType = Gun ? Gun->Type : ECoreAthenaBotWeaponType::Other;
++        const float GunSpread = GunType == ECoreAthenaBotWeaponType::SMG ? 1.3f : GunType == ECoreAthenaBotWeaponType::Pistol ? 1.15f
++            : GunType == ECoreAthenaBotWeaponType::Sniper ? 0.7f : 1.0f;
++        if (Now - LastBurstShot > 0.6f)
++        {
++            BurstShots = 0;
++        }
++        const bool bBloom = GunType == ECoreAthenaBotWeaponType::SMG || GunType == ECoreAthenaBotWeaponType::AssaultRifle;
++        const float Bloom = bBloom ? 1.0f + 0.06f * static_cast<float>(std::min(BurstShots, 6)) : 1.0f;
++        // Fortnite-Offline-Server: the moment counts too (AimSituationScale): running, hit a moment ago, a target in the air,
++        // the first shots at a new target.
++        CoreAthenaBotAwareness::FAimSituation Situation;
++        {
++            UCharacterMovementComponent* OwnMovement = static_cast<ACharacter*>(reinterpret_cast<APawn*>(Pawn))->CharacterMovement;
++            const FVector OwnVelocity = OwnMovement ? static_cast<FVector>(OwnMovement->Velocity) : FVector();
++            Situation.OwnSpeed = std::sqrt(OwnVelocity.X * OwnVelocity.X + OwnVelocity.Y * OwnVelocity.Y);
++            UCharacterMovementComponent* TargetMovement = static_cast<ACharacter*>(reinterpret_cast<APawn*>(Target))->CharacterMovement;
++            Situation.bTargetAirborne = TargetMovement && TargetMovement->MovementMode == MoveFalling;
++        }
++        Situation.bUnderPressure = Now - LastHurtTime < 1.5f;
++        Situation.TrackSeconds = Now - TargetAcquiredTime;
++        Situation.Accuracy = AIBotSkills.Traits.AimAccuracy;
++        Situation.Tracking = AIBotSkills.Traits.AimTracking;
++        const float Spread = (AIBotSkills.MaxTrackingOffsetError + AIBotSkills.MaxTrackingDistanceNearError * std::min(Distance, 2500.0f) / 1000.0f
++            + AIBotSkills.MaxTrackingDistanceFarError * std::max(Distance - 2500.0f, 0.0f) / 1000.0f) * GunSpread * Bloom
++            * CoreAthenaBotAwareness::AimSituationScale(Situation) * AIBotSkills.AimSituationBase;
+         const auto Gaussian = []()
+         {
+             const float U1 = std::max(FMath::FRand(), 1e-6f);
+@@ -4460,6 +4831,8 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+     // With the storm closing in (ShouldHeadForSafeZone), it fights on the way: it keeps heading in, shooting, instead
+     // of standing (or chasing) in the storm (CoreV2 #233).
+     const bool bRunningIn = bHeadingForSafeZone && Storm(Now);
++    bWasSprintingIn = bSprintingIn;
++    bSprintingIn = false;
+     if (bRunningIn)
+     {
+         if (!bArmed && !bPickaxeEquipped)
+@@ -4482,14 +4855,32 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
          }
          MoveTowards(TargetLocation, Now, 80.0f);
      }
 -    else if (Distance > 2500.0f)
+-    {
+-        MoveTowards(TargetLocation, Now, 1500.0f);
 +    else if (const FFightRange Range = [&]
 +             {
 +                 // The gun in its hands sets the distance (FightRangeOf), scaled by the bot's aggression.
@@ -1156,9 +1537,17 @@ index d0d4fd2..134582b 100644
 +                 const FFightRange Base = FightRangeOf(bHasGun ? WeaponList[static_cast<size_t>(EquippedIndex)].Type : ECoreAthenaBotWeaponType::Other);
 +                 return FFightRange{ Base.Min * AIBotSkills.FightRangeScale, Base.Max * AIBotSkills.FightRangeScale };
 +             }();
-+             Distance > Range.Max)
-     {
--        MoveTowards(TargetLocation, Now, 1500.0f);
++             WantsToSprintIn(TargetLocation, Distance, Range.Max, Now))
++    {
++        // Fortnite-Offline-Server: a player doesn't walk in aiming down sights (ADS walks): outside its gun's distance it
++        // sprints in without aiming or firing, a shotgun, SMG or pistol all the way to its distance; an assault rifle or a
++        // sniper only until twice its distance, where it stands (strafing) and shoots from range instead of closing in
++        // (WantsToSprintIn: shot at within its gun's reach, or unable to close in, it stands and fires instead).
++        bSprintingIn = true;
++        StopFiring();
++        SetTargeting(false);
++        // Its next shot's error is drawn when it gets there, not the one drawn far off and running.
++        AimErrorShotTime = -1.0f;
 +        MoveTowards(TargetLocation, Now, (Range.Min + Range.Max) * 0.5f);
      }
      else
@@ -1171,7 +1560,7 @@ index d0d4fd2..134582b 100644
          {
              Pawn->AddMovementInput(Direction2D(TargetLocation, Location), 0.6f, false);
          }
-@@ -4498,7 +4653,7 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+@@ -4498,7 +4889,7 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
          // The input eases from one side to the other (about a third of a second) instead of flipping in a frame.
          if (Now >= NextStrafeChange)
          {
@@ -1180,7 +1569,7 @@ index d0d4fd2..134582b 100644
              StrafeSign = FMath::FRand() < 0.6f ? -StrafeSign : StrafeSign;
          }
          const float Step = std::min(std::max(Now - LastStrafeTime, 0.0f), 0.1f) * 3.0f;
-@@ -4508,7 +4663,29 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+@@ -4508,7 +4899,29 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
          SetMovementStyle(false, Now);
          if (std::fabs(StrafeAmount) > 0.05f)
          {
@@ -1211,7 +1600,12 @@ index d0d4fd2..134582b 100644
          }
      }
  
-@@ -4521,7 +4698,9 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+@@ -4517,11 +4930,13 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+         EndShot();
+     }
+     // A player aims down sights with a gun beyond arm's reach, not while reloading.
+-    SetTargeting(bCanFire && bArmed && !bPickaxeEquipped && ReloadUntil <= 0.0f && Distance > 400.0f && FacingError() < 45.0f);
++    SetTargeting(!bSprintingIn && bCanFire && bArmed && !bPickaxeEquipped && ReloadUntil <= 0.0f && Distance > 400.0f && FacingError() < 45.0f);
      // A player turns to face a target before shooting at it.
      const FCoreAthenaBotWeapon* Ready = !bPickaxeEquipped && EquippedIndex >= 0 && EquippedIndex < static_cast<int32_t>(WeaponList.size()) ? &WeaponList[static_cast<size_t>(EquippedIndex)] : nullptr;
      const bool bGunReady = bPickaxeEquipped || (Now >= EquipReadyTime && (!Ready || Now >= Ready->ReadyTime));
@@ -1222,20 +1616,27 @@ index d0d4fd2..134582b 100644
      const bool bLoaded = bPickaxeEquipped ? Distance < 250.0f : (EquippedWeapon.Get() && EquippedWeapon.Get()->AmmoCount > 0);
      // A launcher's shot is the game's projectile (FireProjectile), whose explosion takes its shooter too: Battle Royale's
      // GA_Ranged_GenericProjectileExplosive_Athena hits pawns in a 5 m sphere without leaving out the instigator. A player
-@@ -4541,6 +4720,12 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+@@ -4537,10 +4952,18 @@ bool FCoreAthenaBotController::RangeAttack(float Now)
+         FVector BlockedAt;
+         bLauncherTooClose = !HasClearShot(Pawn, Eye, FVector(TargetLocation.X, TargetLocation.Y, TargetLocation.Z + 20.0f), Target, &Blocker, &BlockedAt) && (BlockedAt - Eye).Size() < 600.0f;
+     }
+-    if (bReady && bLoaded && bCanFire && !bFiring && !bLauncherTooClose)
++    const bool bWithinFireRange = !Ready || Distance <= MaxFireDistance(Ready->Type);
++    if (bReady && bLoaded && bCanFire && !bFiring && !bLauncherTooClose && bWithinFireRange && !bSprintingIn)
      {
          FireShot(Target, Distance);
          bFiring = true;
 +        // Fortnite-Offline-Server: heard by the bots around (HearGunfire): 30-70 m by weapon, as loud as players hear it.
++        // A pickaxe swing isn't a gunshot.
++        if (!bPickaxeEquipped && EquippedIndex >= 0 && EquippedIndex < static_cast<int32_t>(WeaponList.size()))
 +        {
-+            const ECoreAthenaBotWeaponType Type = !bPickaxeEquipped && EquippedIndex >= 0 && EquippedIndex < static_cast<int32_t>(WeaponList.size())
-+                ? WeaponList[static_cast<size_t>(EquippedIndex)].Type : ECoreAthenaBotWeaponType::Other;
++            const ECoreAthenaBotWeaponType Type = WeaponList[static_cast<size_t>(EquippedIndex)].Type;
 +            Manager->NoteGunshot(Team, Location, CoreAthenaBotAwareness::ShotLoudness(static_cast<int>(Type)), Now);
 +        }
          if (ShotsFired++ == 0)
          {
              Log::Info(L"Battle Royale bots: {} opens fire on {} {:.0f} m away with {} ({} loaded)", BotName, NameOf(Target), Distance / 100.0f,
-@@ -4590,6 +4775,17 @@ bool FCoreAthenaBotController::IsTargetBoxedIn(AFortPawn* Target) const
+@@ -4590,6 +5013,17 @@ bool FCoreAthenaBotController::IsTargetBoxedIn(AFortPawn* Target) const
      return Building && Building->bPlayerPlaced && !Building->bDestroyed && (Hit - To).Size() < 600.0f;
  }
  
@@ -1253,7 +1654,7 @@ index d0d4fd2..134582b 100644
  bool FCoreAthenaBotController::Loot(float Now, float MaxDistance)
  {
  #if WITH_SERVER_CODE
-@@ -4609,7 +4805,8 @@ bool FCoreAthenaBotController::Loot(float Now, float MaxDistance)
+@@ -4609,20 +5043,32 @@ bool FCoreAthenaBotController::Loot(float Now, float MaxDistance)
      if (Now >= NextLootSearch && (!Target || !bCommitted || Dist2D(LocationOf(Target), Location) > 1000.0f))
      {
          NextLootSearch = Now + 1.0f;
@@ -1263,7 +1664,33 @@ index d0d4fd2..134582b 100644
          AFortPickup* Nearest = nullptr;
          FVector LeashAround;
          float LeashRadius = 0.0f;
-@@ -4637,6 +4834,12 @@ bool FCoreAthenaBotController::Loot(float Now, float MaxDistance)
+         const bool bLeashed = GetSquadLeash(LeashAround, LeashRadius);
++        // Fortnite-Offline-Server: a player sweeps on the way they are going: an item behind the bot counts up to half as
++        // far again (turning round stops it: the bots stopped 70 times a match for under a second while looting).
++        UCharacterMovementComponent* SweepMovement = static_cast<ACharacter*>(reinterpret_cast<APawn*>(Pawn))->CharacterMovement;
++        const FVector SweepVelocity = SweepMovement ? static_cast<FVector>(SweepMovement->Velocity) : FVector();
++        const float SweepSpeed = std::sqrt(SweepVelocity.X * SweepVelocity.X + SweepVelocity.Y * SweepVelocity.Y);
++        const FVector Heading = SweepSpeed > 150.0f ? FVector(SweepVelocity.X / SweepSpeed, SweepVelocity.Y / SweepSpeed, 0.0f) : FVector();
+         for (const FCoreAthenaBotLoot& Entry : Manager->GetLoot())
+         {
+             AFortPickup* Pickup = Entry.Pickup.Get();
+-            if (!Pickup || Pickup->bPickedUp || IsUnreachable(Pickup) || (Pickup != Target && IsTakenByTeammate(Pickup)) || (bLeashed && Dist2D(Entry.Location, LeashAround) > LeashRadius))
++            if (!Pickup || Pickup->bPickedUp || IsUnreachable(Pickup) || IsInBlockedSpot(Entry.Location, Now) || (Pickup != Target && IsTakenByTeammate(Pickup)) || (bLeashed && Dist2D(Entry.Location, LeashAround) > LeashRadius))
+             {
+                 continue;
+             }
+             FFortItemEntry& PickupEntry = Pickup->PrimaryPickupItemEntry;
+-            const float Distance = (Entry.Location - Location).Size();
++            float Distance = (Entry.Location - Location).Size();
++            if (SweepSpeed > 150.0f && Distance > 1.0f)
++            {
++                const FVector Way = Direction2D(Location, Entry.Location);
++                Distance *= 1.0f + 0.25f * (1.0f - (Way.X * Heading.X + Way.Y * Heading.Y));
++            }
+             if (Distance < Best && std::fabs(Entry.Location.Z - Location.Z) < 800.0f && WantsPickup(PickupEntry.ItemDefinition, Entry.bWeapon, Entry.bConsumable))
+             {
+                 Best = Distance;
+@@ -4637,6 +5083,12 @@ bool FCoreAthenaBotController::Loot(float Now, float MaxDistance)
              LootTarget = Target;
          }
      }
@@ -1276,21 +1703,148 @@ index d0d4fd2..134582b 100644
      if (!Target)
      {
          return false;
-@@ -4670,7 +4873,9 @@ bool FCoreAthenaBotController::Loot(float Now, float MaxDistance)
+@@ -4665,14 +5117,29 @@ bool FCoreAthenaBotController::Loot(float Now, float MaxDistance)
+         TakePickup(Target);
+         LootTarget = nullptr;
+         NextLootSearch = 0.0f;
++        // Fortnite-Offline-Server: on to the next one in the same frame (a frame without a move each pickup stopped the
++        // bot: 70 stops under a second a bot a match, 5.7% of its time on the ground).
++        if (!bLootChained)
++        {
++            bLootChained = true;
++            Loot(Now, MaxDistance);
++            bLootChained = false;
++        }
+         return true;
+     }
      // Right above or below it (another floor, a roof): out of reach for a bot without a path. With a navmesh the path
      // takes it up the stairs, so it is given a few seconds first (CoreV2 #252: ammo on an upper floor was given up as
      // the bot walked under it).
 -    if (Dist2D(PickupLocation, Location) < 120.0f && (!Manager->HasNavigation() || Now - LootTargetTime > 8.0f))
 +    // Fortnite-Offline-Server: with no path to follow (standing right over it, a bot that landed on the roof), 1.5 s:
 +    // the bots stood 5-8 s on roofs after landing.
-+    if (Dist2D(PickupLocation, Location) < 120.0f && (!Manager->HasNavigation() || Now - LootTargetTime > (bPathFollowing ? 8.0f : 1.5f)))
++    // Fortnite-Offline-Server: standing 3 s on the way to it (its path ends under or over it, or short of it), a player
++    // breaks through to it, or leaves it: the bots stood up to 8 s, and 20 s just outside 1.2 m (8% of their time on
++    // the ground went standing while looting; S3 players stand 20% of the time in all).
++    const bool bStanding = StandingFor(Now, Location, Target, 3.0f);
++    if (Dist2D(PickupLocation, Location) < 120.0f && (!Manager->HasNavigation() || bStanding || Now - LootTargetTime > (bPathFollowing ? 8.0f : 1.5f)))
      {
          // On the roof (or floor) over it: the bot breaks through to it (CoreV2 #275).
++        BreakWhy = L"loot below";
          if (BreakDownFromRoof(Now, PickupLocation))
-@@ -5055,6 +5260,23 @@ bool FCoreAthenaBotController::Storm(float Now)
+         {
+             LootTargetTime = Now;
+@@ -4683,6 +5150,15 @@ bool FCoreAthenaBotController::Loot(float Now, float MaxDistance)
+         NextLootSearch = 0.0f;
+         return false;
+     }
++    if (bStanding)
++    {
++        ++LeftStanding;
++        ++BreakThroughsByWhy[L"loot left: stood 3 s (not a break)"];
++        MarkUnreachable(Target);
++        LootTarget = nullptr;
++        NextLootSearch = 0.0f;
++        return false;
++    }
+     MoveTowards(PickupLocation, Now, 50.0f);
+     return true;
+ #else
+@@ -4690,6 +5166,89 @@ bool FCoreAthenaBotController::Loot(float Now, float MaxDistance)
+ #endif
+ }
+ 
++void FCoreAthenaBotController::LogFall(const FVector& To, const wchar_t* How)
++{
++    static int32_t Logged = 0;
++    if (Logged++ < 40)
++    {
++        Log::Info(L"Battle Royale bots: {} {} after a {:.0f} m fall from ({:.0f}, {:.0f}, {:.0f}) to ({:.0f}, {:.0f}, {:.0f}): {}", BotName, How, (FallFrom.Z - To.Z) / 100.0f,
++            FallFrom.X, FallFrom.Y, FallFrom.Z, To.X, To.Y, To.Z, FallWhy);
++    }
++}
++
++bool FCoreAthenaBotController::WantsToSprintIn(const FVector& TargetLocation, float Distance, float RangeMax, float Now)
++{
++    // Twice its distance for an assault rifle or a sniper, its distance for the rest; once standing, 20% more (and a metre)
++    // before it sets off again, so an enemy stepping back and forth at the edge doesn't switch it between the two.
++    const float Edge = HoldsLongGun() ? RangeMax * 2.0f : RangeMax;
++    if (Distance <= (bWasSprintingIn ? Edge : Edge * 1.2f + 100.0f))
++    {
++        SprintCheckTime = -1.0f;
++        return false;
++    }
++    // Shot at with the enemy within its gun's reach: it returns fire from where it stands.
++    const ECoreAthenaBotWeaponType Type = !bPickaxeEquipped && EquippedIndex >= 0 && EquippedIndex < static_cast<int32_t>(WeaponList.size())
++        ? WeaponList[static_cast<size_t>(EquippedIndex)].Type : ECoreAthenaBotWeaponType::Other;
++    // (Pushing with a shotgun or an SMG it keeps running in, as a player pushing does.)
++    if (Now - LastHurtTime < 2.0f && Distance <= MaxFireDistance(Type) && !(bPushing && (Type == ECoreAthenaBotWeaponType::Shotgun || Type == ECoreAthenaBotWeaponType::SMG)))
++    {
++        return false;
++    }
++    // An enemy it can't run to (4 m above or below it: another roof, a cliff's top), or no 1.5 m closer in 2.5 s of
++    // running (a drop, a wall between them): it fires from where it is for 4 s.
++    if (std::fabs(TargetLocation.Z - LastKnownPosition.Z) > 400.0f || Now < SprintBlockedUntil)
++    {
++        return false;
++    }
++    if (!bWasSprintingIn || SprintCheckTime < 0.0f)
++    {
++        SprintCheckTime = Now;
++        SprintCheckDistance = Distance;
++    }
++    else if (Now - SprintCheckTime > 2.5f)
++    {
++        if (Distance > SprintCheckDistance - 150.0f)
++        {
++            SprintBlockedUntil = Now + 4.0f;
++            SprintCheckTime = -1.0f;
++            return false;
++        }
++        SprintCheckTime = Now;
++        SprintCheckDistance = Distance;
++    }
++    return true;
++}
++
++bool FCoreAthenaBotController::HoldsLongGun() const
++{
++    const ECoreAthenaBotWeaponType Type = !bPickaxeEquipped && EquippedIndex >= 0 && EquippedIndex < static_cast<int32_t>(WeaponList.size())
++        ? WeaponList[static_cast<size_t>(EquippedIndex)].Type : ECoreAthenaBotWeaponType::Other;
++    return Type == ECoreAthenaBotWeaponType::AssaultRifle || Type == ECoreAthenaBotWeaponType::Sniper;
++}
++
++bool FCoreAthenaBotController::StandingFor(float Now, const FVector& Location, const void* Target, float Seconds)
++{
++    // Fortnite-Offline-Server: turned back from edges 30 times on its way to this one target counts as stuck too (an item
++    // below a ledge: a bot turned 1885 times at one).
++    if (Target != LedgeTarget)
++    {
++        LedgeTarget = Target;
++        LedgeTurnsAtTarget = LedgeTurns + LedgeStops;
++    }
++    if (LedgeTurns + LedgeStops - LedgeTurnsAtTarget > 30)
++    {
++        return true;
++    }
++    if (Target != StandTarget || Now - StandSeen > 0.5f || HarvestTarget.Get() || (Location - StandAnchor).Size() > 100.0f)
++    {
++        StandTarget = Target;
++        StandAnchor = Location;
++        StandSince = Now;
++    }
++    StandSeen = Now;
++    return Now - StandSince > Seconds;
++}
++
+ namespace
+ {
+     std::vector<UFortMontageItemDefinitionBase*>& BotEmotes()
+@@ -5055,7 +5614,24 @@ bool FCoreAthenaBotController::Storm(float Now)
      return true;
  }
  
+-bool FCoreAthenaBotController::ShouldHeadForSafeZone(float Now) const
 +bool FCoreAthenaBotController::IsInStorm() const
 +{
 +    FVector StormCenter;
@@ -1308,10 +1862,45 @@ index d0d4fd2..134582b 100644
 +    return !Target || Dist2D(LastKnownPosition, LocationOf(Target)) > 1500.0f;
 +}
 +
- bool FCoreAthenaBotController::ShouldHeadForSafeZone(float Now) const
++bool FCoreAthenaBotController::ShouldHeadForSafeZone(float Now, bool bPreview) const
  {
      // Inside the next circle with room to spare, nothing to run from.
-@@ -5086,7 +5308,9 @@ bool FCoreAthenaBotController::ShouldHeadForSafeZone(float Now) const
+     FVector Center;
+@@ -5074,7 +5650,32 @@ bool FCoreAthenaBotController::ShouldHeadForSafeZone(float Now) const
+     float StormRadius = 0.0f;
+     if (Manager->GetCurrentSafeZone(StormCenter, StormRadius) && Dist2D(LastKnownPosition, StormCenter) > StormRadius * 0.97f)
+     {
+-        return true;
++        // Fortnite-Offline-Server: Season 3 players spent 12% of their time in the storm (22 s a match, median), nearly
++        // all in the first circles, where it takes 1 health a second; the bots under 1%. In those circles a healthy bot
++        // finishes what it is doing (looting, a fight) for a while, 10-35 s by its Rotation trait, and leaves at once
++        // below 70 health and shield; from the third circle on, out first as before. The circle's own timing below still
++        // sends it off in time.
++        if (StormSince < 0.0f && !bPreview)
++        {
++            StormSince = Now;
++        }
++        const float Since = StormSince < 0.0f ? Now : StormSince;
++        // The storm takes health, not shield: a bot with 20 health and a full shield is in danger.
++        const AFortPlayerPawnAthena* Self = GetPawn();
++        const float Health = Self ? const_cast<AFortPlayerPawnAthena*>(Self)->GetHealth() : 0.0f;
++        const float Patience = 10.0f + 25.0f * (1.0f - std::clamp(AIBotSkills.Traits.Rotation, 0.0f, 1.0f));
++        if (Manager->GetStormDamagePerSecond() > 1.0f || Health < 70.0f || Now - Since > Patience)
++        {
++            return true;
++        }
++        // Patient: only a circle about to close on it sends it off now (the run's time, no spare: with the usual 30-63 s
++        // to spare the timing below sent it off at once, every time).
++        const float Finish = Manager->GetSafeZoneFinishShrinkTime();
++        return Finish > Now && Finish - Now <= 1800.0f && Now + Remaining / 400.0f + 5.0f >= Finish;
++    }
++    else if (!bPreview)
++    {
++        StormSince = -1.0f;
+     }
+     // The storm's edge closes in from where it is to the next circle by SafeZoneFinishShrinkTime (it waits, then
+     // shrinks at a steady pace): a bot inside the circle now that heads straight in, getting there by then, stays ahead
+@@ -5086,7 +5687,9 @@ bool FCoreAthenaBotController::ShouldHeadForSafeZone(float Now) const
          return false;
      }
      constexpr float RunSpeed = 400.0f;
@@ -1322,7 +1911,16 @@ index d0d4fd2..134582b 100644
      return Now + Remaining / RunSpeed + Spare >= Finish;
  }
  
-@@ -5238,7 +5462,12 @@ const wchar_t* FCoreAthenaBotController::ChooseGoal(float Now)
+@@ -5208,7 +5811,7 @@ bool FCoreAthenaBotController::PursueGoal(ECoreAthenaBotGoal InGoal, float Now)
+     case ECoreAthenaBotGoal::Search: return SearchContainer(Now);
+     case ECoreAthenaBotGoal::Storm: return Storm(Now);
+     case ECoreAthenaBotGoal::Regroup: return StayWithTeam(Now);
+-    case ECoreAthenaBotGoal::Harvest: return Harvest(Now);
++    case ECoreAthenaBotGoal::Harvest: return !FCoreAthenaBotManager::bZeroBuild && Harvest(Now);
+     case ECoreAthenaBotGoal::Hunt: return Investigate(Now);
+     case ECoreAthenaBotGoal::TravelToPOI: return SelectNextPOI(Now);
+     case ECoreAthenaBotGoal::Wander: Wander(Now); return true;
+@@ -5238,10 +5841,16 @@ const wchar_t* FCoreAthenaBotController::ChooseGoal(float Now)
      default:
          break;
      }
@@ -1334,9 +1932,15 @@ index d0d4fd2..134582b 100644
 +    // With nothing left to loot, the next spot (inside the circle) or a player comes first, then the circle.
 +    for (const ECoreAthenaBotGoal Next : { ECoreAthenaBotGoal::Search, ECoreAthenaBotGoal::Regroup, ECoreAthenaBotGoal::Loot, ECoreAthenaBotGoal::Harvest })
      {
-         // Materials wait until the bot has a gun (a bot that landed empty-handed chopped trees instead of arming itself).
-         if (Next == ECoreAthenaBotGoal::Harvest && !HasUsableWeapon())
-@@ -5260,7 +5489,7 @@ const wchar_t* FCoreAthenaBotController::ChooseGoal(float Now)
+-        // Materials wait until the bot has a gun (a bot that landed empty-handed chopped trees instead of arming itself).
+-        if (Next == ECoreAthenaBotGoal::Harvest && !HasUsableWeapon())
++        // Materials wait until the bot has a gun (a bot that landed empty-handed chopped trees instead of arming itself);
++        // Zero Build gathers none.
++        if (Next == ECoreAthenaBotGoal::Harvest && (!HasUsableWeapon() || FCoreAthenaBotManager::bZeroBuild))
+         {
+             continue;
+         }
+@@ -5260,7 +5869,7 @@ const wchar_t* FCoreAthenaBotController::ChooseGoal(float Now)
      {
          return GoalName(Goal);
      }
@@ -1345,7 +1949,7 @@ index d0d4fd2..134582b 100644
      {
          if (Next != Goal && PursueGoal(Next, Now))
          {
-@@ -5282,8 +5511,11 @@ bool FCoreAthenaBotController::Investigate(float Now)
+@@ -5282,8 +5891,11 @@ bool FCoreAthenaBotController::Investigate(float Now)
      // to meet it by chance (WillEngageBot). Once the player is in sight, RangeAttack fights them.
      AFortPlayerPawnAthena* Pawn = GetPawn();
      const int32_t Armed = static_cast<int32_t>(std::count_if(WeaponList.begin(), WeaponList.end(), [this](const FCoreAthenaBotWeapon& Weapon) { return HasAmmoFor(Weapon); }));
@@ -1358,7 +1962,7 @@ index d0d4fd2..134582b 100644
      {
          HuntTarget = nullptr;
          return false;
-@@ -5298,7 +5530,7 @@ bool FCoreAthenaBotController::Investigate(float Now)
+@@ -5298,7 +5910,7 @@ bool FCoreAthenaBotController::Investigate(float Now)
              && (!bHasZone || Dist2D(LocationOf(Other), Center) < Radius);
      };
      AFortPawn* Target = HuntTarget.Get();
@@ -1367,7 +1971,7 @@ index d0d4fd2..134582b 100644
      {
          Target = nullptr;
          HuntTarget = nullptr;
-@@ -5310,7 +5542,7 @@ bool FCoreAthenaBotController::Investigate(float Now)
+@@ -5310,7 +5922,7 @@ bool FCoreAthenaBotController::Investigate(float Now)
              return false;
          }
          NextHuntSearch = Now + 3.0f;
@@ -1376,24 +1980,37 @@ index d0d4fd2..134582b 100644
          for (const TWeakObjectPtr<AFortPawn>& Weak : Manager->GetEnemyPawns())
          {
              AFortPawn* Other = Weak.Get();
-@@ -5336,6 +5568,225 @@ bool FCoreAthenaBotController::Investigate(float Now)
+@@ -5336,53 +5948,288 @@ bool FCoreAthenaBotController::Investigate(float Now)
  #endif
  }
  
+-void FCoreAthenaBotController::ClearNextDestination()
+-{
+-    NextPOI = -1;
+-}
+-
+-bool FCoreAthenaBotController::SelectNextPOI(float Now)
 +bool FCoreAthenaBotController::HearGunfire(float Now)
-+{
-+#if WITH_SERVER_CODE
+ {
+ #if WITH_SERVER_CODE
+-    // 21.40's UFortAthenaAIBotEvaluator_SelectNextPOI: with nothing left to loot where it is, the bot sets off for the
+-    // best spot near it (FindNextBestPOI: a named location or a cluster of chests with loot left, inside the next safe
+-    // zone, not one it has been to), a teammate's choice first so the team stays together; it arrives within a third of
+-    // the spot's radius, and the loot there takes over.
 +    // Fortnite-Offline-Server: bots-only matches had no hunts at all (Investigate goes after players only), and a bot
 +    // looted on 30 m from a fight it couldn't see. A gunshot carries 30-70 m by weapon (FCoreAthenaBotManager::NoteGunshot),
 +    // heard over 75-110 % of it by the Awareness trait. A bot hearing one is alert for 3 s (quicker to fire back); an armed
 +    // one in good health with nothing else on goes to check where it came from, the likelier the closer and the more
 +    // aggressive it is (half as likely while it still lacks a second gun), for up to 12 s, then rests 6 s. It only learns
 +    // where the shot came from: the fight itself still needs a line of sight. (Syndicate's BotAwareness, MIT.)
-+    AFortPlayerPawnAthena* Pawn = GetPawn();
+     AFortPlayerPawnAthena* Pawn = GetPawn();
+-    if (!Pawn)
 +    if (!Pawn || State != ECoreAthenaBotState::Landed)
-+    {
-+        return false;
-+    }
+     {
+         return false;
+     }
+-    // A bot on a player's team goes where its players go (StayWithTeam): the next spot is theirs to choose.
+-    if (!Manager->PlayerTeammatesOf(this).empty())
 +    const FVector Location = LastKnownPosition;
 +    const bool bArmed = HasUsableWeapon();
 +    if (Now < HeardShotUntil)
@@ -1409,22 +2026,38 @@ index d0d4fd2..134582b 100644
 +        return true;
 +    }
 +    if (Now < NextHearCheck)
-+    {
-+        return false;
-+    }
+     {
+-        ClearNextDestination();
+         return false;
+     }
+-    const FVector Location = LocationOf(Pawn);
+-    const FCoreAthenaBotLandingSpot* Spot = Manager->GetPOI(NextPOI);
+-    if (Spot)
 +    NextHearCheck = Now + 0.5f;
 +    const FCoreAthenaBotManager::FHeardShot* Heard = nullptr;
 +    float HeardDistance = 0.0f;
 +    const float Hearing = CoreAthenaBotAwareness::HearingScale(AIBotSkills.Traits.Awareness);
 +    for (const FCoreAthenaBotManager::FHeardShot& Shot : Manager->GetRecentGunshots())
-+    {
+     {
+-        // A spot the storm is closing on is given up.
+-        FVector Center;
+-        float Radius = 0.0f;
+-        if (Manager->GetSafeZone(Center, Radius) && Dist2D(Spot->Location, Center) > Radius * 0.9f)
 +        if (Shot.Team == Team || Now - Shot.Time > 1.0f || Shot.Time > Now)
-+        {
+         {
+-            Log::Info(L"Battle Royale bots: {} gives up on {} (outside the safe zone)", BotName, Spot->Name);
+-            ClearNextDestination();
+-            Spot = nullptr;
 +            continue;
-+        }
+         }
+-        // Not there in three minutes (the way is blocked): another one.
+-        else if (Now - POITravelStartTime > 180.0f)
 +        const float Distance = Dist2D(Location, Shot.Where);
 +        if (Distance <= Shot.Range * Hearing && (!Heard || Distance < HeardDistance))
-+        {
+         {
+-            Log::Info(L"Battle Royale bots: {} gives up on {} ({:.0f} m short of it)", BotName, Spot->Name, Dist2D(Location, POIDestination) / 100.0f);
+-            ClearNextDestination();
+-            Spot = nullptr;
 +            Heard = &Shot;
 +            HeardDistance = Distance;
 +        }
@@ -1465,6 +2098,11 @@ index d0d4fd2..134582b 100644
 +bool FCoreAthenaBotController::Retreat(float Now)
 +{
 +#if WITH_SERVER_CODE
++    // A heal started in cover keeps the cover's rules (IsHealBlocked) to its end; CancelHeal clears it.
++    if (!HealingItem)
++    {
++        bHealingInCover = false;
++    }
 +    // Fortnite-Offline-Server: a bot low on health kept trading shots in the open until it went down. A player low on
 +    // health and shield, under fire with a heal on them, breaks off for a spot out of the shooter's sight and heals there.
 +    // Not when the shooter is right on it (turning its back gets it shot: it fights), nor against a weaker enemy, nor in
@@ -1530,10 +2168,16 @@ index d0d4fd2..134582b 100644
 +    if (NextRetreatPlan > 0.0f && !bSeen && Now - LastHurtTime > 1.5f && (bAtSpot || bCovered))
 +    {
 +        StopMoving();
-+        if (!IsInCombat(Now))
++        bHealingInCover = true;
++        NextHealCheck = 0.0f;
++        // No heal could start (the storm, nothing usable, an item that outlasts the circle): it doesn't stand there
++        // until RetreatUntil, it ends the retreat and fights or rotates.
++        if (!Heal(Now) && !HealingItem)
 +        {
-+            NextHealCheck = 0.0f;
-+            Heal(Now);
++            bHealingInCover = false;
++            bRetreating = false;
++            RetreatRestUntil = Now + 8.0f;
++            return false;
 +        }
 +        return true;
 +    }
@@ -1599,21 +2243,54 @@ index d0d4fd2..134582b 100644
 +#endif
 +}
 +
- void FCoreAthenaBotController::ClearNextDestination()
- {
-     NextPOI = -1;
-@@ -5363,6 +5814,10 @@ bool FCoreAthenaBotController::SelectNextPOI(float Now)
-     const FCoreAthenaBotLandingSpot* Spot = Manager->GetPOI(NextPOI);
-     if (Spot)
-     {
++void FCoreAthenaBotController::ClearNextDestination()
++{
++    NextPOI = -1;
++}
++
++bool FCoreAthenaBotController::SelectNextPOI(float Now)
++{
++#if WITH_SERVER_CODE
++    // 21.40's UFortAthenaAIBotEvaluator_SelectNextPOI: with nothing left to loot where it is, the bot sets off for the
++    // best spot near it (FindNextBestPOI: a named location or a cluster of chests with loot left, inside the next safe
++    // zone, not one it has been to), a teammate's choice first so the team stays together; it arrives within a third of
++    // the spot's radius, and the loot there takes over.
++    AFortPlayerPawnAthena* Pawn = GetPawn();
++    if (!Pawn)
++    {
++        return false;
++    }
++    // A bot on a player's team goes where its players go (StayWithTeam): the next spot is theirs to choose.
++    if (!Manager->PlayerTeammatesOf(this).empty())
++    {
++        ClearNextDestination();
++        return false;
++    }
++    const FVector Location = LocationOf(Pawn);
++    const FCoreAthenaBotLandingSpot* Spot = Manager->GetPOI(NextPOI);
++    if (Spot)
++    {
 +        // Only the time spent going there counts: a chest, a tree or a fight on the way used up the three minutes, and
 +        // the bots gave up on (or the match ended before) nearly every spot they set off for (2 reached in 22).
 +        POITravelStartTime += Now - LastPOIPursuit > 0.5f ? Now - LastPOIPursuit : 0.0f;
 +        LastPOIPursuit = Now;
-         // A spot the storm is closing on is given up.
-         FVector Center;
-         float Radius = 0.0f;
-@@ -5383,6 +5838,7 @@ bool FCoreAthenaBotController::SelectNextPOI(float Now)
++        // A spot the storm is closing on is given up.
++        FVector Center;
++        float Radius = 0.0f;
++        if (Manager->GetSafeZone(Center, Radius) && Dist2D(Spot->Location, Center) > Radius * 0.9f)
++        {
++            Log::Info(L"Battle Royale bots: {} gives up on {} (outside the safe zone)", BotName, Spot->Name);
++            ClearNextDestination();
++            Spot = nullptr;
++        }
++        // Not there in three minutes (the way is blocked): another one.
++        else if (Now - POITravelStartTime > 180.0f)
++        {
++            Log::Info(L"Battle Royale bots: {} gives up on {} ({:.0f} m short of it)", BotName, Spot->Name, Dist2D(Location, POIDestination) / 100.0f);
++            ClearNextDestination();
++            Spot = nullptr;
+         }
+         else if (Dist2D(Location, POIDestination) < std::max(Spot->Radius * 0.33f, 1500.0f))
          {
              Log::Info(L"Battle Royale bots: {} arrives at {} after {:.0f} s", BotName, Spot->Name, Now - POITravelStartTime);
              ++POIsVisited;
@@ -1621,7 +2298,7 @@ index d0d4fd2..134582b 100644
              ClearNextDestination();
              return false;
          }
-@@ -5421,6 +5877,8 @@ bool FCoreAthenaBotController::SelectNextPOI(float Now)
+@@ -5421,6 +6268,8 @@ bool FCoreAthenaBotController::SelectNextPOI(float Now)
          NextPOI = Next;
          VisitedPOIs.push_back(Next);
          POITravelStartTime = Now;
@@ -1630,7 +2307,58 @@ index d0d4fd2..134582b 100644
          // A spot on the ground near its middle (the volume's centre can be in the air or inside a building).
          if (!Manager->FindGroundNear(Spot->Location, Spot->Radius * 0.25f, POIDestination))
          {
-@@ -5455,6 +5913,19 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
+@@ -5452,9 +6301,70 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
+         StopMoving();
+         return;
+     }
++    // Fortnite-Offline-Server: a bot that wants to move and hasn't moved 30 cm in 2 s (pressed into a corner, a path
++    // asked for again and again that ends where it stands) steps out 1.8 m towards open ground: across first, then
++    // aslant, back, ahead, a different way each time, at most 3 times in one place in 20 s (then the stuck checks'
++    // break-through or give-up). The bots stood still 27% of their time on the ground (players 20%), the held-up check
++    // needing traces that hit a wall and the confinement check 4.5 s. Idea from Syndicate's BotGroundRescue (MIT).
++    if (Now >= SidestepUntil && !HarvestTarget.Get() && BuildQueue.Descriptors.empty() && !IsInCombat(Now))
++    {
++        if (StallAnchorTime < 0.0f || Now - StallLastSeen > 0.5f || Dist2D(Location, StallAnchor) > 30.0f || std::fabs(Location.Z - StallAnchor.Z) > 35.0f)
++        {
++            StallAnchor = Location;
++            StallAnchorTime = Now;
++        }
++        else if (Now - StallAnchorTime > 2.0f)
++        {
++            StallAnchorTime = Now;
++            if (Now - RescueAreaTime > 20.0f || Dist2D(Location, RescueArea) > 300.0f)
++            {
++                RescueArea = Location;
++                RescueAreaTime = Now;
++                RescuesHere = 0;
++            }
++            const FVector Way = Direction2D(Location, Destination);
++            const FVector Chest(Location.X, Location.Y, Location.Z + 30.0f);
++            constexpr float Angles[] = { 90.0f, -90.0f, 45.0f, -45.0f, 135.0f, -135.0f, 0.0f, 180.0f };
++            for (int32_t Index = 0; RescuesHere < 3 && Way.SizeSquared() > 0.01f && Index < 8; ++Index)
++            {
++                const FVector Heading = RotateYaw(Way, Angles[(RescuesHere * 2 + Index) % 8]);
++                if (IsBlocked(Pawn, Chest, Chest + Heading * 180.0f) || !HasGroundAhead(Heading, 120.0f))
++                {
++                    continue;
++                }
++                ++RescuesHere;
++                ++BreakThroughsByWhy[L"rescue step (not a break)"];
++                bPathFollowing = false;
++                AIController->StopMovement();
++                NextPathRequest = Now + 0.7f;
++                SidestepDirection = Heading;
++                SidestepUntil = Now + 0.6f;
++                static int32_t LoggedRescues = 0;
++                if (LoggedRescues++ < 30)
++                {
++                    Log::Info(L"Battle Royale bots: {} hasn't moved in 2 s ({}) and steps out {:.0f} deg off its way", BotName, LastIntent, Angles[(RescuesHere * 2 - 2 + Index) % 8]);
++                }
++                break;
++            }
++        }
++        StallLastSeen = Now;
++    }
      // Sprinting to get there, as players do (CoreV2 #373: the bots ran at 4.1 m/s for a second and a half each time their
      // target left their sight, and looked as if they walked); running only while firing.
      SetMovementStyle(!bFiring, Now);
@@ -1650,7 +2378,7 @@ index d0d4fd2..134582b 100644
      FVector SteerGoal = Destination;
      if (FollowPath(Destination, Now, AcceptanceRadius, SteerGoal))
      {
-@@ -5467,6 +5938,19 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
+@@ -5467,6 +6377,26 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
          {
              OpenDoorInTheWay(Ahead, Now);
          }
@@ -1658,8 +2386,15 @@ index d0d4fd2..134582b 100644
 +        // and a bot on a path there stepped off them (6 of 33 deaths in a run were 70-80 m falls, all on a path or
 +        // heading for the circle); AvoidLedge only looked out while it steered. With no ground two storeys down just
 +        // ahead, it lets the path go for a moment and steers, which keeps it on the ground.
++        // A path's own drop (a navmesh link off a roof or a low wall, its next point at most 9 m below, close by) is taken:
++        // stopping and steering away from it every 2 s kept bots on a factory roof for minutes (one turned 718 times).
++        const float DropToNext = Location.Z - Next.Z;
++        // Only onto ground that holds (HasGroundAhead at the next point, its slope looked at): a bot that landed on the dock
++        // tower took its first path's 5 m drop onto a ledge and fell 37 m past it.
++        const bool bPathDrop = DropToNext > 100.0f && DropToNext < 900.0f && Dist2D(Location, Next) < 800.0f && Dist2D(Location, Next) > 50.0f
++            && HasGroundAhead(Direction2D(Location, Next), Dist2D(Location, Next));
 +        FVector LedgeProbe = Ahead;
-+        if (!AvoidLedge(LedgeProbe, Now) || bLedgeTurned)
++        if (!bPathDrop && (!AvoidLedge(LedgeProbe, Now) || bLedgeTurned))
 +        {
 +            StopMoving();
 +            SteerReason = L"ledge on its path";
@@ -1670,7 +2405,7 @@ index d0d4fd2..134582b 100644
          // A wall the path doesn't know of (a piece built since its navmesh tile was made, a closed door that didn't
          // open): held up against it for most of a second, the bot steers around it for a moment instead of walking into
          // it until TryToUnstuck's checks (3 s) give up on the path (CoreV2 #252: "some bots walk into walls").
-@@ -5475,6 +5959,14 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
+@@ -5475,6 +6405,14 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
          const bool bHeldUp = Movement && Movement->MovementMode == MoveWalking && std::sqrt(Velocity.X * Velocity.X + Velocity.Y * Velocity.Y) < 60.0f
              && IsBlocked(Pawn, FVector(Location.X, Location.Y, Location.Z - 30.0f), FVector(Location.X, Location.Y, Location.Z - 30.0f) + Ahead * 90.0f)
              && IsBlocked(Pawn, FVector(Location.X, Location.Y, Location.Z + 70.0f), FVector(Location.X, Location.Y, Location.Z + 70.0f) + Ahead * 90.0f);
@@ -1685,7 +2420,7 @@ index d0d4fd2..134582b 100644
          if (!bHeldUp)
          {
              HeldUpOnPathSince = -1.0f;
-@@ -5486,6 +5978,29 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
+@@ -5486,6 +6424,29 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
          else if (Now - HeldUpOnPathSince > 0.75f)
          {
              HeldUpOnPathSince = -1.0f;
@@ -1715,7 +2450,7 @@ index d0d4fd2..134582b 100644
              StopMoving();
              SteerReason = L"wall on its path";
              PathFailedUntil = Now + 1.5f;
-@@ -5503,57 +6018,282 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
+@@ -5503,10 +6464,300 @@ void FCoreAthenaBotController::MoveTowards(const FVector& Destination, float Now
      FVector Direction = Direction2D(Location, SteerGoal);
      OpenDoorInTheWay(Direction, Now);
      SteerAroundObstacles(Direction, Now);
@@ -1727,19 +2462,13 @@ index d0d4fd2..134582b 100644
  #endif
  }
  
--void FCoreAthenaBotController::StopMoving()
 +bool FCoreAthenaBotController::IsSeenByHuman(const FVector& Location) const
- {
--    bHasMoveGoal = false;
--    SteerReason = L"standing";
--    if (bPathFollowing)
++{
 +#if WITH_SERVER_CODE
 +    // A human player within 200 m could be looking: nothing is moved by hand where a player could see it.
 +    AFortGameModeAthena* GameMode = Manager ? Manager->GetGameMode() : nullptr;
 +    if (!GameMode)
-     {
--        bPathFollowing = false;
--        if (AAIController* AIController = Controller.Get())
++    {
 +        return true;
 +    }
 +    const TArray<AFortPlayerControllerAthena*>& Alive = GameMode->AlivePlayers;
@@ -1748,72 +2477,63 @@ index d0d4fd2..134582b 100644
 +        AFortPlayerControllerAthena* PC = Alive[Index];
 +        APawn* Human = PC ? PC->GetPawn() : nullptr;
 +        if (Human && !FCoreAthenaBotManager::IsBotPawn(reinterpret_cast<UObject*>(Human)) && Dist2D(LocationOf(reinterpret_cast<AActor*>(Human)), Location) < 20000.0f)
-         {
--            AIController->StopMovement();
++        {
 +            return true;
-         }
-     }
++        }
++    }
 +    return false;
 +#else
 +    return true;
 +#endif
- }
- 
--bool FCoreAthenaBotController::FollowPath(const FVector& Destination, float Now, float AcceptanceRadius, FVector& SteerGoal)
++}
++
 +bool FCoreAthenaBotController::TrappedRecovery(float Now)
- {
- #if WITH_SERVER_CODE
--    // 21.40's _Movement with a navmesh: AAIController::MoveToLocation with pathfinding (a partial path where the tiles
--    // around the bot end), followed by the engine's path following. A far goal is reached a leg at a time, each leg's end
--    // a point on the navmesh, and the next leg is asked for while the bot is still on the last one. It steers only when
--    // there is no navmesh to path on (off it, its tiles not built yet) or no path, for a moment (21.40's OnGoalOffNavMesh).
--    SteerGoal = Destination;
--    AAIController* AIController = Controller.Get();
++{
++#if WITH_SERVER_CODE
 +    // Fortnite-Offline-Server: 7.40 bots-only matches lost a quarter of their bots trapped for minutes in one place (a
 +    // path into a wall, a room with no way out it could find), the storm then killing them. Its position every 5 s:
 +    // within 6 m of where it was 30 s ago, out of a fight and far from its goal, it is trapped. It first walks to a
 +    // navmesh point 15-25 m away in another way (8 s); trapped again within 90 s with the storm on it or coming, and
 +    // no player near enough to see, it is put inside the next circle (Titanium's "unseen storm relocation" idea).
-     AFortPlayerPawnAthena* Pawn = GetPawn();
--    if (!Manager->HasNavigation() || State != ECoreAthenaBotState::Landed || !AIController || !Pawn)
++    AFortPlayerPawnAthena* Pawn = GetPawn();
 +    UWorld* World = Manager && Manager->GetGameMode() ? Manager->GetGameMode()->GetWorld() : nullptr;
 +    if (!Pawn || !World || State != ECoreAthenaBotState::Landed)
-     {
--        if (bPathFollowing)
--        {
--            StopMoving();
--        }
--        SteerReason = L"no navigation";
-         return false;
-     }
--    if (Now < PathFailedUntil)
++    {
++        return false;
++    }
 +    const FVector Location = LastKnownPosition;
 +    if (Now < RecoveryUntil)
-     {
--        if (bHasSteerTarget)
--        {
--            SteerGoal = SteerTarget;
--        }
--        if (bPathFollowing)
++    {
 +        if (Dist2D(Location, RecoveryGoal) < 300.0f)
-         {
--            bPathFollowing = false;
--            AIController->StopMovement();
++        {
 +            RecoveryUntil = 0.0f;
 +            return false;
-         }
++        }
 +        MoveTowards(RecoveryGoal, Now, 200.0f);
 +        return true;
 +    }
 +    if (Now < NextTrapSample)
 +    {
-         return false;
-     }
--    const FVector Location = LocationOf(Pawn);
++        return false;
++    }
 +    NextTrapSample = Now + 5.0f;
 +    TrapSamples.push_back({ Now, Location });
++    TrapLedgeSamples.push_back({ LedgeTurns + LedgeStops, bHasMoveGoal ? Dist2D(Location, MoveGoal) : 0.0f });
++    while (TrapLedgeSamples.size() > TrapSamples.size() + 1)
++    {
++        TrapLedgeSamples.erase(TrapLedgeSamples.begin());
++    }
 +    std::erase_if(TrapSamples, [Now](const std::pair<float, FVector>& Sample) { return Now - Sample.first > 30.0f; });
-+    if (TrapSamples.size() < 6 || IsInCombat(Now) || !bHasMoveGoal || Dist2D(Location, MoveGoal) < 1500.0f)
++    while (TrapLedgeSamples.size() > TrapSamples.size())
++    {
++        TrapLedgeSamples.erase(TrapLedgeSamples.begin());
++    }
++    // Fortnite-Offline-Server: turned back from edges all the while (40+ ledge turns or stops in 30 s) and no closer to its
++    // goal: trapped on a summit or a roof wider than 6 m (two bots spent 5 minutes on one, 800 turns each), near its goal
++    // too (a bot turned 1885 times at an edge with an item below it).
++    const bool bLedgeLoop = TrapLedgeSamples.size() == TrapSamples.size() && !TrapLedgeSamples.empty()
++        && TrapLedgeSamples.back().first - TrapLedgeSamples.front().first > 40 && TrapLedgeSamples.back().second > TrapLedgeSamples.front().second - 1000.0f;
++    if (TrapSamples.size() < 6 || IsInCombat(Now) || !bHasMoveGoal || (Dist2D(Location, MoveGoal) < 1500.0f && !bLedgeLoop))
 +    {
 +        return false;
 +    }
@@ -1829,12 +2549,24 @@ index d0d4fd2..134582b 100644
 +    float ZoneRadius = 0.0f;
 +    const bool bStormLoop = Moved > 600.0f && IsInStorm() && Manager->GetSafeZone(ZoneCenter, ZoneRadius) && ZoneRadius > 0.0f
 +        && Dist2D(Location, ZoneCenter) > Dist2D(TrapSamples.front().second, ZoneCenter) - 1000.0f;
-+    if (Moved > 600.0f && !bStormLoop)
++    if (Moved > 600.0f && !bStormLoop && !bLedgeLoop)
 +    {
 +        return false;
 +    }
 +    TrapSamples.clear();
++    TrapLedgeSamples.clear();
 +    ++TrappedEvents;
++    // Fortnite-Offline-Server (Zero Build): where a bot is trapped in a hole (open sky, walls on 6+ of 8 sides), for the
++    // list of the map's holes that get a rift of their own.
++    if (FCoreAthenaBotManager::bZeroBuild)
++    {
++        const int32_t Walls = FCoreAthenaBotManager::PitWalls(Pawn, Location);
++        static int32_t LoggedPits = 0;
++        if (Walls >= 6 && LoggedPits++ < 200)
++        {
++            Log::Info(L"Zero Build: hole at ({:.0f}, {:.0f}, {:.0f}): {} trapped there ({} walls of 8)", Location.X, Location.Y, Location.Z, BotName, Walls);
++        }
++    }
 +    const bool bAgain = LastTrappedTime > 0.0f && Now - LastTrappedTime < 90.0f;
 +    LastTrappedTime = Now;
 +    static int32_t Logged = 0;
@@ -1846,7 +2578,7 @@ index d0d4fd2..134582b 100644
 +        const FVector Way = Dist2D(Location, Center) > 1.0f ? Direction2D(Center, Location) : FVector(1.0f, 0.0f, 0.0f);
 +        const FVector Inside(Center.X + Way.X * Radius * 0.7f, Center.Y + Way.Y * Radius * 0.7f, Location.Z);
 +        FVector Ground;
-+        if (Manager->FindGroundNear(Inside, 3000.0f, Ground) && reinterpret_cast<AActor*>(Pawn)->TeleportTo(FVector(Ground.X, Ground.Y, Ground.Z + 120.0f), reinterpret_cast<AActor*>(Pawn)->GetActorRotation()))
++        if (Manager->FindGroundNear(Inside, 3000.0f, Ground) && !IsSeenByHuman(Ground) && reinterpret_cast<AActor*>(Pawn)->TeleportTo(FVector(Ground.X, Ground.Y, Ground.Z + 120.0f), reinterpret_cast<AActor*>(Pawn)->GetActorRotation()))
 +        {
 +            ++Rescues;
 +            StopMoving();
@@ -1869,9 +2601,12 @@ index d0d4fd2..134582b 100644
 +        {
 +            const FVector Way = RotateYaw(Back, Yaw);
 +            FVector Point;
-+            if (UAthenaNavSystem::ProjectPointToNavigation(World, FVector(Location.X + Way.X * Length, Location.Y + Way.Y * Length, Location.Z), Point, FVector(300.0f, 300.0f, 800.0f)))
++            if (UAthenaNavSystem::ProjectPointToNavigation(World, FVector(Location.X + Way.X * Length, Location.Y + Way.Y * Length, Location.Z), Point, FVector(300.0f, 300.0f, 800.0f))
++                && !(Now - LastRecoveryTime < 90.0f && Dist2D(Point, LastRecoveryGoal) < 500.0f))
 +            {
 +                RecoveryGoal = Point;
++                LastRecoveryGoal = Point;
++                LastRecoveryTime = Now;
 +                RecoveryUntil = Now + 8.0f;
 +                if (Logged++ < 40)
 +                {
@@ -1902,6 +2637,10 @@ index d0d4fd2..134582b 100644
 +    {
 +        return true;
 +    }
++    if (Now < NextLedgeCheck && Direction.X * LedgeAskedWay.X + Direction.Y * LedgeAskedWay.Y < 0.7f)
++    {
++        NextLedgeCheck = 0.0f;
++    }
 +    if (Now < NextLedgeCheck)
 +    {
 +        if (bLedgeBlocked)
@@ -1918,6 +2657,7 @@ index d0d4fd2..134582b 100644
 +    // at 5.5 m/s, a 1.2 m look every 0.2 s let a bot reach an edge between two looks (a 7.40 bot that landed on the
 +    // mountain by Snobby Shores walked off it heading for the circle and fell 70 m).
 +    NextLedgeCheck = Now + 0.1f;
++    LedgeAskedWay = Direction;
 +    const FVector Location = LocationOf(Pawn);
 +    const FVector Velocity = static_cast<FVector>(Movement->Velocity);
 +    const float Ahead = std::clamp(std::sqrt(Velocity.X * Velocity.X + Velocity.Y * Velocity.Y) * 0.5f, ProbeAhead, 300.0f);
@@ -1927,6 +2667,19 @@ index d0d4fd2..134582b 100644
 +    if (HasGround(Direction))
 +    {
 +        return true;
++    }
++    // Fortnite-Offline-Server: what it carries towards the edge goes (as against a wall): sprinting at 5.5 m/s, a turn
++    // takes the pawn half a second, and it went on over the edge it had seen (about 25 falls of 10-28 m in 75 bots, all
++    // while steering by hand after a path was dropped at a ledge).
++    {
++        FVector Carried = static_cast<FVector>(Movement->Velocity);
++        const float Into = Carried.X * Direction.X + Carried.Y * Direction.Y;
++        if (Into > 0.0f)
++        {
++            Carried.X -= Direction.X * Into;
++            Carried.Y -= Direction.Y * Into;
++            Movement->Velocity = Carried;
++        }
 +    }
 +    for (const float Yaw : { 45.0f, -45.0f, 90.0f, -90.0f, 135.0f, -135.0f })
 +    {
@@ -1967,67 +2720,52 @@ index d0d4fd2..134582b 100644
 +    const FVector Probe(Location.X + Way.X * Ahead, Location.Y + Way.Y * Ahead, Location.Z + 50.0f);
 +    const FVector Bottom(Probe.X, Probe.Y, Location.Z - FeetOffset - MaxSafeDrop);
 +    FVector Floor;
-+    if (UKismetSystemLibrary::LineTraceSingle(Pawn, Probe, Bottom, 0, false, true, Floor))
++    bool bFound = UKismetSystemLibrary::LineTraceSingle(Pawn, Probe, Bottom, 0, false, true, Floor)
++        || UKismetSystemLibrary::LineTraceSingle(Pawn, FVector(Probe.X, Probe.Y, Probe.Z + Ahead), Bottom, 0, false, true, Floor);
++    if (!bFound)
 +    {
-+        return true;
++        return false;
 +    }
-+    return UKismetSystemLibrary::LineTraceSingle(Pawn, FVector(Probe.X, Probe.Y, Probe.Z + Ahead), Bottom, 0, false, true, Floor);
++    // Fortnite-Offline-Server: more than 2 m down, ground 3 m further on too, at most 10 m below the feet: a cliff's face
++    // 3-8 m down counted as ground, and bots on a path along a cliff's top walked onto it and slid 25-50 m (3.6's cliff
++    // east of the river). A steep mountainside still goes down (a 1 m look for a slope over 50 deg left two bots on a
++    // summit for 5 minutes).
++    if (Location.Z - FeetOffset - Floor.Z > 200.0f)
++    {
++        const FVector Further(Probe.X + Way.X * 300.0f, Probe.Y + Way.Y * 300.0f, Probe.Z);
++        FVector FurtherFloor;
++        // And not a face steeper than about 57 deg over those 3 m (4.6 m lower): the navmesh's slopes stop at 44.5 deg, and
++        // two bots on a storm path walked onto the big mountain's face and fell 48 m at the same spot.
++        if (!UKismetSystemLibrary::LineTraceSingle(Pawn, Further, FVector(Further.X, Further.Y, Location.Z - FeetOffset - 1000.0f), 0, false, true, FurtherFloor)
++            || Floor.Z - FurtherFloor.Z > 460.0f)
++        {
++            return false;
++        }
++    }
++    return true;
 +#else
 +    return true;
 +#endif
 +}
 +
-+void FCoreAthenaBotController::StopMoving()
-+{
-+    bHasMoveGoal = false;
-+    SteerReason = L"standing";
-+    if (bPathFollowing)
-+    {
-+        bPathFollowing = false;
-+        if (AAIController* AIController = Controller.Get())
-+        {
-+            AIController->StopMovement();
-+        }
-+    }
-+}
-+
-+bool FCoreAthenaBotController::FollowPath(const FVector& Destination, float Now, float AcceptanceRadius, FVector& SteerGoal)
-+{
-+#if WITH_SERVER_CODE
-+    // 21.40's _Movement with a navmesh: AAIController::MoveToLocation with pathfinding (a partial path where the tiles
-+    // around the bot end), followed by the engine's path following. A far goal is reached a leg at a time, each leg's end
-+    // a point on the navmesh, and the next leg is asked for while the bot is still on the last one. It steers only when
-+    // there is no navmesh to path on (off it, its tiles not built yet) or no path, for a moment (21.40's OnGoalOffNavMesh).
-+    SteerGoal = Destination;
-+    AAIController* AIController = Controller.Get();
-+    AFortPlayerPawnAthena* Pawn = GetPawn();
-+    if (!Manager->HasNavigation() || State != ECoreAthenaBotState::Landed || !AIController || !Pawn)
-+    {
-+        if (bPathFollowing)
-+        {
-+            StopMoving();
-+        }
-+        SteerReason = L"no navigation";
-+        return false;
-+    }
-+    if (Now < PathFailedUntil)
-+    {
-+        if (bHasSteerTarget)
-+        {
-+            SteerGoal = SteerTarget;
-+        }
-+        if (bPathFollowing)
-+        {
-+            bPathFollowing = false;
-+            AIController->StopMovement();
-+        }
-+        return false;
-+    }
-+    const FVector Location = LocationOf(Pawn);
-     // A far goal that drifts (the storm's point on the bot's side of the circle) keeps its leg until it moves a tenth of
-     // the way.
-     const float GoalDrift = bOnLeg ? std::max(250.0f, Dist2D(Location, Destination) * 0.1f) : 250.0f;
-@@ -5629,6 +6369,29 @@ bool FCoreAthenaBotController::RequestPath(const FVector& Destination, float Now
+ void FCoreAthenaBotController::StopMoving()
+ {
+     bHasMoveGoal = false;
+@@ -5590,8 +6841,11 @@ bool FCoreAthenaBotController::FollowPath(const FVector& Destination, float Now,
+             }
+         }
+     }
+-    // At most a few requests a second (a path that ends at once is asked for again).
+-    if (Now - LastPathRequest < 0.25f)
++    // At most a few requests a second (a path that ends at once is asked for again). Fortnite-Offline-Server: but not while
++    // the path it is on ends within 3 m at a goal it has left (the item it just took): finishing it stops the pawn dead
++    // (path following's stop on finish), a stop under a second at each new target.
++    const bool bLeftGoalNearEnd = bPathFollowing && Dist2D(PathGoal, Destination) > GoalDrift && Dist2D(Location, PathGoal) < 300.0f;
++    if (Now - LastPathRequest < 0.25f && !bLeftGoalNearEnd)
+     {
+         return bPathFollowing;
+     }
+@@ -5629,6 +6883,29 @@ bool FCoreAthenaBotController::RequestPath(const FVector& Destination, float Now
      {
          if (UAthenaNavSystem::ProjectPointToNavigation(World, Location, OnNavMesh, FVector(600.0f, 600.0f, 400.0f)))
          {
@@ -2057,7 +2795,7 @@ index d0d4fd2..134582b 100644
              Steer(L"back to the navmesh", 0.5f);
              SteerGoal = OnNavMesh;
              SteerTarget = OnNavMesh;
-@@ -5720,15 +6483,25 @@ void FCoreAthenaBotController::OpenDoorInTheWay(const FVector& Direction, float
+@@ -5720,15 +6997,25 @@ void FCoreAthenaBotController::OpenDoorInTheWay(const FVector& Direction, float
      }
      NextDoorProbe = Now + 0.25f;
      const FVector Location = LocationOf(Pawn);
@@ -2089,7 +2827,62 @@ index d0d4fd2..134582b 100644
      {
          return;
      }
-@@ -6050,14 +6823,18 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
+@@ -5791,12 +7078,18 @@ void FCoreAthenaBotController::SteerAroundObstacles(FVector& Direction, float No
+     const FVector Head(Location.X, Location.Y, Location.Z + 70.0f);
+     // The room ahead along Way: the shortest of the traces at knee height from the capsule's middle and its two sides
+     // (36 uu), and at head height from its middle, up to Length.
+-    const auto Room = [&](const FVector& Way, float Length)
++    // Fortnite-Offline-Server: the middle trace first, and no more once one is shorter than Enough (the way can't win):
++    // up to 40 traces a look before, for a bot held up in a corner.
++    const auto Room = [&](const FVector& Way, float Length, float Enough)
+     {
+         const FVector Side = RotateYaw(Way, 90.0f) * 36.0f;
+         float Shortest = Length;
+         for (const FVector& Start : { Knee, Knee + Side, Knee - Side, Head })
+         {
++            if (Shortest < Enough)
++            {
++                break;
++            }
+             FVector Hit;
+             UObject* HitActor = nullptr;
+             UObject* HitComponent = nullptr;
+@@ -5819,7 +7112,10 @@ void FCoreAthenaBotController::SteerAroundObstacles(FVector& Direction, float No
+     }
+     // A downed (DBNO) pawn crawls and can't jump, as a downed player can't (CoreV2 #233): it steers around instead.
+     // A mountainside isn't jumped at: the bot turns along it (and, stuck, TryToUnstuck builds up it).
+-    if (!Pawn->bIsDBNO && !IsBlocked(Pawn, Head, Head + Direction * 150.0f) && !IsSteepSlopeAhead(Pawn, Location, Direction))
++    // Fortnite-Offline-Server: nor a railing on a tower's or a roof's edge: a bot jumped over one and fell 30-40 m
++    // (3.6's dock tower and the cliff-top house, 3 of 75 bots in a run). Only with ground behind it (HasGroundAhead 2.5 m on).
++    if (!Pawn->bIsDBNO && !IsBlocked(Pawn, Head, Head + Direction * 150.0f) && !IsSteepSlopeAhead(Pawn, Location, Direction)
++        && HasGroundAhead(Direction, 250.0f))
+     {
+         if (Now >= NextJumpTime)
+         {
+@@ -5838,7 +7134,7 @@ void FCoreAthenaBotController::SteerAroundObstacles(FVector& Direction, float No
+     {
+         for (const float Side : { AvoidSide < 0.0f ? -1.0f : 1.0f, AvoidSide < 0.0f ? 1.0f : -1.0f })
+         {
+-            const float Space = Room(RotateYaw(Direction, Turn * Side), 500.0f);
++            const float Space = Room(RotateYaw(Direction, Turn * Side), 500.0f, std::max(Clear, BestRoom + 50.0f));
+             if (Space >= Clear && Space > BestRoom + 50.0f)
+             {
+                 BestAngle = Turn * Side;
+@@ -5985,6 +7281,13 @@ bool FCoreAthenaBotController::IsUnreachable(const void* Object) const
+     return Object && std::find(Unreachable.begin(), Unreachable.end(), Object) != Unreachable.end();
+ }
+ 
++bool FCoreAthenaBotController::IsInBlockedSpot(const FVector& Where, float Now) const
++{
++    return std::any_of(BlockedSpots.begin(), BlockedSpots.end(), [&](const std::pair<FVector, float>& Spot) {
++        return Now - Spot.second < 90.0f && Dist2D(Spot.first, Where) < 500.0f && std::fabs(Spot.first.Z - Where.Z) < 300.0f;
++    });
++}
++
+ void FCoreAthenaBotController::MarkUnreachable(const void* Object)
+ {
+     if (Object && !IsUnreachable(Object))
+@@ -6050,14 +7353,18 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
  #if WITH_SERVER_CODE
      // Ammo boxes are worth it while the bot wants ammo for its guns; chests while it wants anything, a better gun too
      // (a free slot, or one below epic: the community list, bots look for better loot).
@@ -2109,7 +2902,7 @@ index d0d4fd2..134582b 100644
      }
      const bool bWantsChest = bWantsAmmo || bWantsBetter || Consumables.empty();
      ABuildingContainer* Target = ContainerTarget.Get();
-@@ -6082,7 +6859,7 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
+@@ -6082,7 +7389,7 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
      if (!Target && Now >= NextContainerSearch)
      {
          NextContainerSearch = Now + 2.0f;
@@ -2118,7 +2911,7 @@ index d0d4fd2..134582b 100644
          FVector LeashAround;
          float LeashRadius = 0.0f;
          const bool bLeashed = GetSquadLeash(LeashAround, LeashRadius);
-@@ -6104,6 +6881,12 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
+@@ -6104,6 +7411,12 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
          }
          ContainerTarget = Target;
      }
@@ -2131,7 +2924,40 @@ index d0d4fd2..134582b 100644
      if (!Target)
      {
          return false;
-@@ -6419,6 +7202,7 @@ bool FCoreAthenaBotController::DamagePawn(AFortPawn* Victim, AFortWeapon* Weapon
+@@ -6158,9 +7471,15 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
+         return true;
+     }
+     SearchUntil = 0.0f;
+-    if (Dist2D(ContainerLocation, Location) < 120.0f)
++    // Fortnite-Offline-Server: right over it on another floor, it gives its path a moment first, as Loot does (it broke
++    // the floor at once, while Loot waited).
++    // Fortnite-Offline-Server: as for a pickup (Loot), standing on its way: through to it, or left; 5 s, so a wall in the
++    // way is broken first (TryToUnstuck's 4.5 s held in one place): a chest is worth a wall.
++    const bool bStanding = StandingFor(Now, Location, Target, 5.0f);
++    if (Dist2D(ContainerLocation, Location) < 120.0f && (!Manager->HasNavigation() || bStanding || Now - ContainerTargetTime > (bPathFollowing ? 8.0f : 1.5f)))
+     {
+         // On the roof (or floor) over it: the bot breaks through to it (CoreV2 #275).
++        BreakWhy = L"chest below";
+         if (BreakDownFromRoof(Now, ContainerLocation))
+         {
+             ContainerTargetTime = Now;
+@@ -6171,6 +7490,15 @@ bool FCoreAthenaBotController::SearchContainer(float Now, float MaxDistance)
+         NextContainerSearch = 0.0f;
+         return false;
+     }
++    if (bStanding)
++    {
++        ++LeftStanding;
++        ++BreakThroughsByWhy[L"chest left: stood 5 s (not a break)"];
++        MarkUnreachable(Target);
++        ContainerTarget = nullptr;
++        NextContainerSearch = 0.0f;
++        return false;
++    }
+     MoveTowards(ContainerLocation, Now, 100.0f);
+     return true;
+ #else
+@@ -6419,6 +7747,7 @@ bool FCoreAthenaBotController::DamagePawn(AFortPawn* Victim, AFortWeapon* Weapon
      const float Before = Victim->GetHealth() + Victim->GetShield();
      const float HealthBefore = Victim->GetHealth();
      const float ShieldBefore = Victim->GetShield();
@@ -2139,7 +2965,7 @@ index d0d4fd2..134582b 100644
      bool bApplied = false;
      for (int32_t Index = 0; Index < std::max(Hits, 1) && !Victim->bIsDying; ++Index)
      {
-@@ -6440,6 +7224,22 @@ bool FCoreAthenaBotController::DamagePawn(AFortPawn* Victim, AFortWeapon* Weapon
+@@ -6440,6 +7769,22 @@ bool FCoreAthenaBotController::DamagePawn(AFortPawn* Victim, AFortWeapon* Weapon
              NameOf(static_cast<UFortWeaponItemDefinition*>(Weapon->WeaponData)), std::max(Hits, 1), OutDamage, Before, Victim->bIsDying ? 0.0f : Victim->GetHealth() + Victim->GetShield(),
              Victim->bIsDying ? L", eliminated" : Victim->bIsDBNO ? L", down" : L"");
      }
@@ -2162,7 +2988,7 @@ index d0d4fd2..134582b 100644
      return bApplied && OutDamage > 0.0f;
  #else
      return false;
-@@ -6470,8 +7270,11 @@ void FCoreAthenaBotController::OnResourcesHarvested(ABuildingSMActor* Building,
+@@ -6470,8 +7815,11 @@ void FCoreAthenaBotController::OnResourcesHarvested(ABuildingSMActor* Building,
      {
          return;
      }
@@ -2174,7 +3000,7 @@ index d0d4fd2..134582b 100644
      Materials[Kind] = std::min(Materials[Kind] + Count, MaxStack);
      static int32_t Logged = 0;
      if (Logged++ < 8 || bDestroyed)
-@@ -6491,6 +7294,12 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
+@@ -6491,6 +7839,12 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
          return false;
      }
      const FVector Location = LocationOf(Pawn);
@@ -2187,7 +3013,16 @@ index d0d4fd2..134582b 100644
      // The way it is trying to go first (inside a house its path turns through rooms, and the wall that holds it up is
      // seldom the one towards its goal: the goal's way alone found nothing to break), then the way to its goal.
      const FVector Ahead = WayAhead(Now, Location);
-@@ -6519,7 +7328,28 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
+@@ -6504,6 +7858,8 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
+         }
+     }
+     // Ahead, and a little to each side, at knee, chest and head height.
++    bool bLeftLoot = false;
++    bool bDropNoted = false;
+     for (const FVector& Direction : Ways)
+     {
+         for (const float Yaw : { 0.0f, -25.0f, 25.0f })
+@@ -6519,7 +7875,76 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
                      continue;
                  }
                  ABuildingSMActor* Building = HitActor ? Cast<ABuildingSMActor>(HitActor) : nullptr;
@@ -2205,6 +3040,26 @@ index d0d4fd2..134582b 100644
 +                    RefusedDoor = DoorWall;
 +                    RefusedDoorUntil = Now + 5.0f;
 +                }
++                // Fortnite-Offline-Server: a wall with a drop behind it (a building's trim or glass on a cliff's edge) isn't
++                // broken: bots broke through one and fell 22 m (Hailey_07 and Wholly_Wesley, the same house on 3.6's map).
++                // HasGroundAhead looks 1.5 m past the wall for ground at most two storeys down.
++                if (Building && !Cast<ABuildingContainer>(HitActor) && !Building->bDestroyed
++                    && !HasGroundAhead(RotateYaw(Direction, Yaw), Dist2D(Start, Hit) + 150.0f))
++                {
++                    if (bDropNoted)
++                    {
++                        continue;
++                    }
++                    bDropNoted = true;
++                    ++BreakThroughsByWhy[L"drop behind a wall (not a break)"];
++                    static int32_t LoggedDrop = 0;
++                    if (LoggedDrop++ < 30)
++                    {
++                        Log::Info(L"Battle Royale bots: {} leaves {} ({:.0f} health) standing: there is a drop behind it", BotName,
++                            NameOf(reinterpret_cast<UObject*>(Building)), Building->GetHealth());
++                    }
++                    continue;
++                }
 +                // Not a chest or an ammo box: the bot searches those. Detour around full house walls (>= 250 HP: wood
 +                // 300, brick 450, metal 600) the first time instead of standing still pickaxing them; break small props
 +                // and fences (< 250 HP) immediately.
@@ -2214,22 +3069,68 @@ index d0d4fd2..134582b 100644
 +                    bSkippedStrongWall = true;
 +                    continue;
 +                }
++                // Fortnite-Offline-Server: held up twice by a strong wall on its way to loot or a chest, a player goes for
++                // other loot instead of pickaxing a house or factory wall for 5-15 s (4.3 such walls a bot a match): the
++                // bot leaves what lies behind it (GiveUp marks the target, the spot keeps it off the items next to it).
++                // In the storm's way, or with nothing to loot, it still breaks through.
++                // A chest is worth the wall (players pickaxe into a house for one they hear): only a pickup is left.
++                AActor* BehindWall = LootTarget.Get() && !ContainerTarget.Get() ? reinterpret_cast<AActor*>(LootTarget.Get()) : nullptr;
++                if (Building && !Cast<ABuildingContainer>(HitActor) && !Building->bDestroyed && Building->GetHealth() >= 250.0f && BehindWall && !bHeadingForSafeZone && !IsUnreachable(Building))
++                {
++                    bSkippedStrongWall = true;
++                    if (bLeftLoot)
++                    {
++                        continue;
++                    }
++                    bLeftLoot = true;
++                    if (BlockedSpots.size() > 16)
++                    {
++                        BlockedSpots.erase(BlockedSpots.begin());
++                    }
++                    BlockedSpots.emplace_back(LocationOf(BehindWall), Now);
++                    ++BreakThroughsByWhy[std::format(L"left loot behind a wall: {}", BreakWhy && *BreakWhy ? BreakWhy : L"?")];
++                    static int32_t LoggedLeft = 0;
++                    if (LoggedLeft++ < 30)
++                    {
++                        Log::Info(L"Battle Royale bots: {} is held up by {} ({:.0f} health) again on its way to {} and leaves what lies there", BotName,
++                            NameOf(reinterpret_cast<UObject*>(Building)), Building->GetHealth(), NameOf(reinterpret_cast<UObject*>(BehindWall)));
++                    }
++                    continue;
++                }
                  if (Building && !Cast<ABuildingContainer>(HitActor) && !Building->bDestroyed && Building->GetHealth() > 0.0f && !IsUnreachable(Building))
                  {
                      HarvestTarget = Building;
-@@ -6527,7 +7357,10 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
+@@ -6527,7 +7952,11 @@ bool FCoreAthenaBotController::FindBuildingInTheWay(float Now)
                      HarvestPoint = Hit;
                      bHarvestToUnstick = true;
                      ++BreakThroughs;
 -                    Log::Info(L"Battle Royale bots: {} is stuck against {} ({:.0f} health) and breaks through it", BotName, NameOf(reinterpret_cast<UObject*>(Building)), Building->GetHealth());
++                    ++BreakThroughsByWhy[std::format(L"wall: {}", BreakWhy && *BreakWhy ? BreakWhy : L"?")];
 +                    UActorComponent* WallComponent = HitComponent && HitComponent->IsA<UActorComponent>() ? static_cast<UActorComponent*>(HitComponent) : nullptr;
-+                    Log::Info(L"Battle Royale bots: {} is stuck against {} ({:.0f} health) and breaks through it (its {} can affect navigation: {}; {})", BotName,
++                    Log::Info(L"Battle Royale bots: {} is stuck against {} ({:.0f} health) and breaks through it (its {} can affect navigation: {}; {}; {})", BotName,
 +                        NameOf(reinterpret_cast<UObject*>(Building)), Building->GetHealth(), HitComponent ? NameOf(HitComponent) : std::wstring(L"component"),
-+                        WallComponent ? (WallComponent->bCanEverAffectNavigation ? L"yes" : L"no") : L"?", bPathFollowing ? L"on a path" : SteerReason);
++                        WallComponent ? (WallComponent->bCanEverAffectNavigation ? L"yes" : L"no") : L"?", bPathFollowing ? L"on a path" : SteerReason, BreakWhy && *BreakWhy ? BreakWhy : L"?");
                      return true;
                  }
              }
-@@ -6785,6 +7618,11 @@ bool FCoreAthenaBotController::FreeItself(float Now, const wchar_t* Why)
+@@ -6573,8 +8002,9 @@ bool FCoreAthenaBotController::BreakDownFromRoof(float Now, const FVector& Below
+     HarvestPoint = Hit;
+     bHarvestToUnstick = true;
+     ++BreakThroughs;
+-    Log::Info(L"Battle Royale bots: {} is up on {} ({:.0f} health), {:.0f} m above where it is going, and breaks through it", BotName, NameOf(reinterpret_cast<UObject*>(Building)),
+-        Building->GetHealth(), (Location.Z - Below.Z) / 100.0f);
++    ++BreakThroughsByWhy[std::format(L"floor: {}", BreakWhy && *BreakWhy ? BreakWhy : L"?")];
++    Log::Info(L"Battle Royale bots: {} is up on {} ({:.0f} health), {:.0f} m above where it is going, and breaks through it ({})", BotName, NameOf(reinterpret_cast<UObject*>(Building)),
++        Building->GetHealth(), (Location.Z - Below.Z) / 100.0f, BreakWhy && *BreakWhy ? BreakWhy : L"?");
+     return true;
+ #else
+     return false;
+@@ -6781,10 +8211,16 @@ bool FCoreAthenaBotController::FreeItself(float Now, const wchar_t* Why)
+         return false;
+     }
+     const FVector Location = LocationOf(Pawn);
++    BreakWhy = Why;
+     if (FindBuildingInTheWay(Now) || BreakDownFromRoof(Now, MoveGoal))
      {
          return true;
      }
@@ -2241,7 +3142,7 @@ index d0d4fd2..134582b 100644
      // Not where it's going down to: a hill, a cliff or a wall that isn't a building's in the way at head height (what
      // the bot can't step or jump onto), or where it's going a level and more above (out of a basement, up a slope).
      const float Rise = MoveGoal.Z - Location.Z;
-@@ -7030,6 +7868,239 @@ bool FCoreAthenaBotController::Bunker(float Now, AFortPawn* Threat, bool bUnknow
+@@ -7030,12 +8466,252 @@ bool FCoreAthenaBotController::Bunker(float Now, AFortPawn* Threat, bool bUnknow
  #endif
  }
  
@@ -2306,8 +3207,8 @@ index d0d4fd2..134582b 100644
 +        return true;
 +    }
 +
-+    // Whether to start one: looked at every second and a half, on the enemy it is fighting and can see.
-+    if (AIBotSkills.Building.TakeHeightOdds <= 0.0f || Now < NextTakeHeightLook)
++    // Whether to start one: looked at every second and a half, on the enemy it is fighting and can see (never in Zero Build).
++    if (AIBotSkills.Building.TakeHeightOdds <= 0.0f || Now < NextTakeHeightLook || FCoreAthenaBotManager::bZeroBuild)
 +    {
 +        return false;
 +    }
@@ -2349,8 +3250,13 @@ index d0d4fd2..134582b 100644
 +    FVector Hit;
 +    UObject* HitActor = nullptr;
 +    UObject* HitComponent = nullptr;
-+    if (UKismetSystemLibrary::LineTraceSingle(Pawn, FVector(Location.X, Location.Y, Location.Z + 60.0f), FVector(Location.X, Location.Y, Location.Z + 60.0f + BuildingLevelHeight * static_cast<float>(Floors)),
-+        0, false, true, Hit, HitActor, HitComponent))
++    // Straight up, and along the ramps' slope towards the target (a ramp climbs a floor a cell): a roof or a branch over
++    // the stair stops the climb as one overhead does.
++    const FVector Eye(Location.X, Location.Y, Location.Z + 60.0f);
++    const FVector Toward = Direction2D(Location, TargetLocation);
++    const float Rise = BuildingLevelHeight * static_cast<float>(Floors);
++    if (UKismetSystemLibrary::LineTraceSingle(Pawn, Eye, FVector(Eye.X, Eye.Y, Eye.Z + Rise), 0, false, true, Hit, HitActor, HitComponent)
++        || UKismetSystemLibrary::LineTraceSingle(Pawn, Eye, Eye + Toward * (BuildingCellSize * static_cast<float>(Floors)) + FVector(0.0f, 0.0f, Rise), 0, false, true, Hit, HitActor, HitComponent))
 +    {
 +        NoteTakeHeight(ETakeHeightStat::SkipHeadroom);
 +        return false;
@@ -2402,11 +3308,12 @@ index d0d4fd2..134582b 100644
 +        return false;
 +    }
 +    BuildQueue.Descriptors = std::move(Kept);
-+    // The top: the last ramp's high edge, a step past it.
++    // The top: the last ramp's high end, a step short of its edge (there is no floor past it: a step past it walked the
++    // bot off its own ramp).
 +    int32_t ForwardX = 0;
 +    int32_t ForwardY = 0;
 +    GridAxis(BuildQueue.Forward, ForwardX, ForwardY);
-+    const float Along = BuildingCellSize * (static_cast<float>(Ramps) - 0.5f) + 60.0f;
++    const float Along = BuildingCellSize * (static_cast<float>(Ramps) - 0.5f) - 60.0f;
 +    HeightTopPoint = FVector(BuildQueue.CellMinX + BuildingCellSize * 0.5f + static_cast<float>(ForwardX) * Along,
 +        BuildQueue.CellMinY + BuildingCellSize * 0.5f + static_cast<float>(ForwardY) * Along, BuildQueue.BaseZ + BuildingLevelHeight * static_cast<float>(Ramps));
 +    HeightTarget = Target;
@@ -2481,7 +3388,15 @@ index d0d4fd2..134582b 100644
  bool FCoreAthenaBotController::StartBuildingQueue(float Now, const FVector& Towards, const std::vector<FCoreAthenaBotBuildDescriptor>& Descriptors, float InitialDelay, float SameDelay,
      float SameDeviation, float DifferentDelay, float DifferentDeviation, const wchar_t* Reason, bool bToUnstick)
  {
-@@ -7043,6 +8114,7 @@ bool FCoreAthenaBotController::StartBuildingQueue(float Now, const FVector& Towa
+ #if WITH_SERVER_CODE
+     AFortPlayerPawnAthena* Pawn = GetPawn();
+-    if (!Pawn || Descriptors.empty())
++    // Fortnite-Offline-Server: Zero Build: no bot builds.
++    if (!Pawn || Descriptors.empty() || FCoreAthenaBotManager::bZeroBuild)
+     {
+         return false;
+     }
+@@ -7043,6 +8719,7 @@ bool FCoreAthenaBotController::StartBuildingQueue(float Now, const FVector& Towa
      const int32_t Kind = static_cast<int32_t>(std::max_element(std::begin(Materials), std::end(Materials)) - std::begin(Materials));
      if (Materials[Kind] < BuildingPieceCost)
      {
@@ -2489,7 +3404,7 @@ index d0d4fd2..134582b 100644
          return false;
      }
      const FVector Location = LocationOf(Pawn);
-@@ -7409,6 +8481,7 @@ bool FCoreAthenaBotController::BuildPiece(const FCoreAthenaBotBuildDescriptor& D
+@@ -7409,6 +9086,7 @@ bool FCoreAthenaBotController::BuildPiece(const FCoreAthenaBotBuildDescriptor& D
      UAthenaNavSystem::AddDirtyArea(Building);
      Materials[Kind] -= BuildingPieceCost;
      ++PiecesBuilt;
@@ -2497,7 +3412,7 @@ index d0d4fd2..134582b 100644
      static int32_t Logged = 0;
      if (Logged++ < 24)
      {
-@@ -7420,6 +8493,49 @@ bool FCoreAthenaBotController::BuildPiece(const FCoreAthenaBotBuildDescriptor& D
+@@ -7420,6 +9098,68 @@ bool FCoreAthenaBotController::BuildPiece(const FCoreAthenaBotBuildDescriptor& D
  #endif
  }
  
@@ -2531,12 +3446,31 @@ index d0d4fd2..134582b 100644
 +    {
 +        Steer += std::format(L"{}\"{}\":{:.0f}", Steer.empty() ? L"" : L",", Quoted(Reason), Seconds);
 +    }
++    std::wstring StillBy;
++    for (const auto& [Key, Seconds] : StillSecondsByIntent)
++    {
++        StillBy += std::format(L"{}\"{}\":{:.0f}", StillBy.empty() ? L"" : L",", Quoted(Key), Seconds);
++    }
++    std::wstring Spells;
++    for (const auto& [Key, Entry] : StillSpells)
++    {
++        Spells += std::format(L"{}\"{}\":[{},{:.0f}]", Spells.empty() ? L"" : L",", Quoted(Key), Entry.first, Entry.second);
++    }
++    for (const auto& [Key, Count] : LootStops)
++    {
++        Spells += std::format(L"{}\"loot stop: {}\":[{},0]", Spells.empty() ? L"" : L",", Quoted(Key), Count);
++    }
++    std::wstring BreakBy;
++    for (const auto& [Key, Count] : BreakThroughsByWhy)
++    {
++        BreakBy += std::format(L"{}\"{}\":{}", BreakBy.empty() ? L"" : L",", Quoted(Key), Count);
++    }
 +    const FCoreBotTraits& T = AIBotSkills.Traits;
-+    Log::Info(L"Battle Royale bots: match stats {{\"death\":\"{}\",\"trapped\":{},\"rescues\":{},\"sidesteps\":{},\"ledgeTurns\":{},\"ledgeStops\":{},\"stormSeconds\":{:.0f},\"rotation\":{:.2f},\"pathSeconds\":{:.0f},\"steerSeconds\":{{{}}},\"bot\":\"{}\",\"style\":\"{}\",\"alive\":{},\"kills\":{},\"aim\":{:.2f},\"buildFrequency\":{:.2f},\"aggression\":{:.2f},"
++    Log::Info(L"Battle Royale bots: match stats {{\"stillSpells\":{{{}}},\"stillByIntent\":{{{}}},\"breakThroughsByWhy\":{{{}}},\"death\":\"{}\",\"trapped\":{},\"rescues\":{},\"sidesteps\":{},\"ledgeTurns\":{},\"ledgeStops\":{},\"stormSeconds\":{:.0f},\"rotation\":{:.2f},\"pathSeconds\":{:.0f},\"steerSeconds\":{{{}}},\"bot\":\"{}\",\"style\":\"{}\",\"alive\":{},\"kills\":{},\"aim\":{:.2f},\"buildFrequency\":{:.2f},\"aggression\":{:.2f},"
 +        L"\"landedSeconds\":{:.0f},\"stillSeconds\":{:.0f},\"pickaxeSeconds\":{:.0f},\"firstWeaponSeconds\":{:.0f},\"shots\":{},\"searched\":{},\"swings\":{},"
 +        L"\"buildsStarted\":{},\"piecesBuilt\":{},\"buildsUnaffordable\":{},\"breakThroughs\":{},\"pieces\":{{{}}},\"materials\":[{},{},{}],"
 +        L"\"gathered\":{},\"poisLeft\":{},\"poisReached\":{},\"hunts\":{},\"heardShotChecks\":{},\"retreats\":{},\"heals\":{},\"jumps\":{},\"goalChanges\":{}}}",
-+        IsAlive() ? L"" : DeathKind == 1 ? L"fall" : DeathKind == 2 ? L"storm" : L"other", TrappedEvents, Rescues, Sidesteps, LedgeTurns, LedgeStops,
++        Spells, StillBy, BreakBy, IsAlive() ? L"" : DeathKind == 1 ? L"fall" : DeathKind == 2 ? L"storm" : L"other", TrappedEvents, Rescues, Sidesteps, LedgeTurns, LedgeStops,
 +        StormSeconds, T.Rotation, PathSeconds, Steer, Quoted(BotName), Quoted(AIBotSkills.Style ? AIBotSkills.Style : L""), IsAlive() ? L"true" : L"false", Kills, T.AimAccuracy, T.BuildFrequency, T.Aggression,
 +        LandedSeconds, StillSeconds, PickaxeSeconds, FirstWeaponSeconds, ShotsFired, ContainersSearched, Swings,
 +        BuildsStarted, PiecesBuilt, BuildsUnaffordable, BreakThroughs, Pieces, Materials[0], Materials[1], Materials[2],
@@ -2547,7 +3481,7 @@ index d0d4fd2..134582b 100644
  bool FCoreAthenaBotController::Harvest(float Now)
  {
  #if WITH_SERVER_CODE
-@@ -7439,9 +8555,15 @@ bool FCoreAthenaBotController::Harvest(float Now)
+@@ -7439,9 +9179,15 @@ bool FCoreAthenaBotController::Harvest(float Now)
          StopHarvesting();
          Target = nullptr;
      }
@@ -2565,7 +3499,7 @@ index d0d4fd2..134582b 100644
      {
          if (Target)
          {
-@@ -7484,6 +8606,8 @@ bool FCoreAthenaBotController::Harvest(float Now)
+@@ -7484,6 +9230,8 @@ bool FCoreAthenaBotController::Harvest(float Now)
          }
          if (!Target)
          {
@@ -2574,7 +3508,7 @@ index d0d4fd2..134582b 100644
              return false;
          }
          HarvestTarget = Target;
-@@ -7507,14 +8631,34 @@ bool FCoreAthenaBotController::Harvest(float Now)
+@@ -7507,14 +9255,34 @@ bool FCoreAthenaBotController::Harvest(float Now)
      {
          return true;
      }
@@ -2609,11 +3543,21 @@ index d0d4fd2..134582b 100644
      if (!bApplied || Damage <= 0.0f)
      {
          MarkUnreachable(Target);
-@@ -8733,6 +9877,50 @@ void FCoreAthenaBotController::DropItemsOnDeathBeforeRespawning()
+@@ -8453,7 +10221,8 @@ void FCoreAthenaBotController::TryToUnstuck(float Now)
+     if (bMoving && Dist2D(Location, LastStuckCheckLocation) < 60.0f)
+     {
+         ++StuckChecks;
+-        if (!Pawn->bIsDBNO)
++        // Not off an edge (a railing it is held up by on a tower): only with ground where it is trying to go.
++        if (!Pawn->bIsDBNO && HasGroundAhead(WayAhead(Now, Location), 250.0f))
+         {
+             static_cast<ACharacter*>(reinterpret_cast<APawn*>(Pawn))->Jump();
+             ++Jumps;
+@@ -8733,6 +10502,50 @@ void FCoreAthenaBotController::DropItemsOnDeathBeforeRespawning()
  #endif
  }
  
-+UFortItemDefinition* FCoreAthenaBotController::BestHealItem() const
++UFortItemDefinition* FCoreAthenaBotController::BestHealItem(float MaxUseTime) const
 +{
 +#if WITH_SERVER_CODE
 +    // The item that restores most for its time, without wasting much of it: at least 40 % of what it gives, and 25 or
@@ -2633,7 +3577,7 @@ index d0d4fd2..134582b 100644
 +    for (const auto& [Definition, Count] : Consumables)
 +    {
 +        const FCoreAthenaBotConsumable* Info = Count > 0 ? GetConsumableInfo(Definition) : nullptr;
-+        if (!Info)
++        if (!Info || Info->UseTime > MaxUseTime)
 +        {
 +            continue;
 +        }
@@ -2660,7 +3604,25 @@ index d0d4fd2..134582b 100644
  bool FCoreAthenaBotController::Heal(float Now)
  {
  #if WITH_SERVER_CODE
-@@ -8791,36 +9979,9 @@ bool FCoreAthenaBotController::Heal(float Now)
+@@ -8745,7 +10558,7 @@ bool FCoreAthenaBotController::Heal(float Now)
+     }
+     if (HealingItem)
+     {
+-        if (IsInCombat(Now))
++        if (IsHealBlocked(Now))
+         {
+             CancelHeal();
+             return false;
+@@ -8779,7 +10592,7 @@ bool FCoreAthenaBotController::Heal(float Now)
+         NextHealCheck = Now + 0.5f;
+         return true;
+     }
+-    if (Now < NextHealCheck || Consumables.empty() || IsInCombat(Now))
++    if (Now < NextHealCheck || Consumables.empty() || IsHealBlocked(Now))
+     {
+         return false;
+     }
+@@ -8791,35 +10604,20 @@ bool FCoreAthenaBotController::Heal(float Now)
      {
          return false;
      }
@@ -2674,7 +3636,12 @@ index d0d4fd2..134582b 100644
 -    UFortItemDefinition* Best = nullptr;
 -    float BestScore = 0.0f;
 -    for (const auto& [Definition, Count] : Consumables)
--    {
++    UFortItemDefinition* Best = BestHealItem();
++    // Fortnite-Offline-Server: a medkit's 10 s (a Chug Jug's 15 s) only if the storm won't send it off before it is done
++    // (ShouldHeadForSafeZone cancels a heal: the bot stood the whole time for nothing); else a quicker item that fits
++    // (a bandage's 4 s, a small shield's 2 s).
++    for (int32_t Tries = 0; Best && Tries < 8; ++Tries)
+     {
 -        const FCoreAthenaBotConsumable* Info = Count > 0 ? GetConsumableInfo(Definition) : nullptr;
 -        if (!Info)
 -        {
@@ -2689,16 +3656,54 @@ index d0d4fd2..134582b 100644
 -        }
 -        const float Score = (HealthGain * 1.2f + ShieldGain) / Info->UseTime;
 -        if (Score > BestScore)
--        {
++        const FCoreAthenaBotConsumable* Timing = GetConsumableInfo(Best);
++        if (!Timing || !ShouldHeadForSafeZone(Now + Timing->UseTime, true))
+         {
 -            BestScore = Score;
 -            Best = Definition;
--        }
--    }
-+    UFortItemDefinition* Best = BestHealItem();
++            break;
+         }
++        Best = BestHealItem(Timing->UseTime - 0.01f);
+     }
      if (!Best)
      {
-         return false;
-@@ -8897,7 +10058,7 @@ bool FCoreAthenaBotController::LootHealing(float Now)
+@@ -8842,12 +10640,22 @@ bool FCoreAthenaBotController::Heal(float Now)
+         // Its use as players see it: the fire ability's montage (GA_Athena_Bandage's AnimMontageInfo: WrapBandages_Athena
+         // at 0.75).
+         FBotUpdateStep Step(*this, L"use animation of", reinterpret_cast<const UObject*>(ItemWeapon));
+-        UProperty* AbilityProperty = reinterpret_cast<UObject*>(ItemWeapon)->GetClass()->FindPropertyByName(FName(L"PrimaryFireAbility", FNAME_Find));
+-        UClass* AbilityClass = AbilityProperty ? reinterpret_cast<TAssetSubclassOf<UObject>*>(reinterpret_cast<uint8_t*>(ItemWeapon) + AbilityProperty->GetOffset_ForInternal())->LoadSynchronous() : nullptr;
+-        float PlayRate = 1.0f;
+-        if (UObject* Montage = AbilityClass ? ObjectOf(AbilityClass->GetDefaultObject(), L"AnimMontageInfo", L"MontageToPlay", &PlayRate, L"AnimPlayRate") : nullptr)
++        // Fortnite-Offline-Server: looked up (and loaded) once per item, not on the game thread at every heal.
++        static std::unordered_map<const UFortWeaponItemDefinition*, std::pair<UObject*, float>> Montages;
++        auto Known = Montages.find(ItemWeapon);
++        if (Known == Montages.end())
++        {
++            UProperty* AbilityProperty = reinterpret_cast<UObject*>(ItemWeapon)->GetClass()->FindPropertyByName(FName(L"PrimaryFireAbility", FNAME_Find));
++            UClass* AbilityClass = AbilityProperty ? reinterpret_cast<TAssetSubclassOf<UObject>*>(reinterpret_cast<uint8_t*>(ItemWeapon) + AbilityProperty->GetOffset_ForInternal())->LoadSynchronous() : nullptr;
++            float Rate = 1.0f;
++            UObject* Found = AbilityClass ? ObjectOf(AbilityClass->GetDefaultObject(), L"AnimMontageInfo", L"MontageToPlay", &Rate, L"AnimPlayRate") : nullptr;
++            KeepLoaded(Found);
++            KeepLoaded(reinterpret_cast<UObject*>(ItemWeapon));
++            Known = Montages.emplace(ItemWeapon, std::make_pair(Found, Rate)).first;
++        }
++        if (UObject* Montage = Known->second.first)
+         {
+-            PlayReplicatedMontage(Montage, PlayRate);
++            PlayReplicatedMontage(Montage, Known->second.second);
+         }
+     }
+     Log::Info(L"Battle Royale bots: {} starts using {} ({:.0f} health, {:.0f} shield, {:.1f} s)", BotName, NameOf(Best), Health, Shield, HealUntil - Now);
+@@ -8861,6 +10669,7 @@ bool FCoreAthenaBotController::Heal(float Now)
+ 
+ void FCoreAthenaBotController::CancelHeal()
+ {
++    bHealingInCover = false;
+     if (!HealingItem)
+     {
+         return;
+@@ -8897,7 +10706,7 @@ bool FCoreAthenaBotController::LootHealing(float Now)
      }
      const float Health = Pawn->GetHealth();
      const float Shield = Pawn->GetShield();
@@ -2707,7 +3712,16 @@ index d0d4fd2..134582b 100644
      {
          return false;
      }
-@@ -9088,6 +10249,12 @@ void FCoreAthenaBotController::OnPossesedPawnDied(AFortPlayerStateAthena* Killer
+@@ -8926,7 +10735,7 @@ bool FCoreAthenaBotController::LootHealing(float Now)
+         for (const FCoreAthenaBotLoot& Entry : Manager->GetLoot())
+         {
+             AFortPickup* Pickup = Entry.Pickup.Get();
+-            if (!Entry.bConsumable || !Pickup || Pickup->bPickedUp || IsUnreachable(Pickup) || IsTakenByTeammate(Pickup) || std::fabs(Entry.Location.Z - Location.Z) > 800.0f)
++            if (!Entry.bConsumable || !Pickup || Pickup->bPickedUp || IsUnreachable(Pickup) || IsInBlockedSpot(Entry.Location, Now) || IsTakenByTeammate(Pickup) || std::fabs(Entry.Location.Z - Location.Z) > 800.0f)
+             {
+                 continue;
+             }
+@@ -9088,9 +10897,20 @@ void FCoreAthenaBotController::OnPossesedPawnDied(AFortPlayerStateAthena* Killer
          PlayerState->ForceNetUpdate();
      }
      DropInventory();
@@ -2720,8 +3734,16 @@ index d0d4fd2..134582b 100644
      State = ECoreAthenaBotState::Dead;
      CurrentTarget = nullptr;
      LootTarget = nullptr;
++    if (bFallNoted)
++    {
++        bFallNoted = false;
++        LogFall(LastKnownPosition, L"dies");
++    }
+     Log::Info(L"Battle Royale bots: {} died at ({:.0f}, {:.0f}, {:.0f}){}{}", BotName, LastKnownPosition.X, LastKnownPosition.Y, LastKnownPosition.Z,
+         bStormDeath ? L" in the storm" : L"", KillerState ? std::format(L", eliminated by {}", KillerState->GetPlayerName().ToStdString()) : std::wstring(L" (nobody's elimination)"));
+     // A playlist that brings its players back (Playground, CoreV2 #344): the bot stays in the match and doesn't spectate,
 diff --git a/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotManager.cpp b/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotManager.cpp
-index 0178781..2cd4d94 100644
+index 0178781..852ff80 100644
 --- a/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotManager.cpp
 +++ b/FortniteGame/Source/FortniteGame/Private/Athena/AI/CoreAthenaBotManager.cpp
 @@ -14,6 +14,7 @@
@@ -2732,7 +3754,16 @@ index 0178781..2cd4d94 100644
  #include "Engine/NetDriver.h"
  #include "Engine/World.h"
  #include "Finder.h"
-@@ -52,10 +53,14 @@
+@@ -29,6 +30,8 @@
+ #include "Items/FortPickup.h"
+ #include "Kismet/GameplayStatics.h"
+ #include "Kismet/KismetSystemLibrary.h"
++#include "GameFramework/Character.h"
++#include "GameFramework/CharacterMovementComponent.h"
+ #include "Log.h"
+ #include "Natives.h"
+ #include "FortKismetLibrary.h"
+@@ -52,10 +55,14 @@
  #include <cmath>
  #include <cwctype>
  #include <format>
@@ -2747,7 +3778,7 @@ index 0178781..2cd4d94 100644
      // Core's native the latent action manager resumes a finished background load with (AddAsyncLoadHandler).
      UFunction* AsyncLoadCompleteFunction = nullptr;
      // How long the next bot waits for its look to finish loading before it comes in anyway (what's missing then loads in
-@@ -891,7 +896,9 @@ void FCoreAthenaBotManager::SetSettings(bool bInEnabled, const FCoreAthenaBotSet
+@@ -891,7 +898,9 @@ void FCoreAthenaBotManager::SetSettings(bool bInEnabled, const FCoreAthenaBotSet
      const bool bChanged = !bHasSettings || bInEnabled != bEnabled || InSettings.Count != Settings.Count || InSettings.Level != Settings.Level
          || InSettings.StartingHealth != Settings.StartingHealth || InSettings.StartingShield != Settings.StartingShield
          || InSettings.bEliminationsCountForQuests != Settings.bEliminationsCountForQuests || InSettings.BotFightChance != Settings.BotFightChance
@@ -2758,7 +3789,7 @@ index 0178781..2cd4d94 100644
      bHasSettings = true;
      if (!bChanged)
      {
-@@ -902,6 +909,7 @@ void FCoreAthenaBotManager::SetSettings(bool bInEnabled, const FCoreAthenaBotSet
+@@ -902,6 +911,7 @@ void FCoreAthenaBotManager::SetSettings(bool bInEnabled, const FCoreAthenaBotSet
      {
          Settings.bEliminationsCountForQuests = InSettings.bEliminationsCountForQuests;
          Settings.BotFightChance = InSettings.BotFightChance;
@@ -2766,7 +3797,7 @@ index 0178781..2cd4d94 100644
          return;
      }
      bEnabled = bInEnabled;
-@@ -919,10 +927,11 @@ void FCoreAthenaBotManager::SetSettings(bool bInEnabled, const FCoreAthenaBotSet
+@@ -919,10 +929,11 @@ void FCoreAthenaBotManager::SetSettings(bool bInEnabled, const FCoreAthenaBotSet
      {
          // The match's bots are on: their update starts, and runs until the match ends (Tick).
          SetTickEnabled(true);
@@ -2780,7 +3811,7 @@ index 0178781..2cd4d94 100644
      }
      else
      {
-@@ -979,42 +988,164 @@ void FCoreAthenaBotManager::SetFillAnswered(const std::vector<std::wstring>& Acc
+@@ -979,42 +990,174 @@ void FCoreAthenaBotManager::SetFillAnswered(const std::vector<std::wstring>& Acc
  }
  
  FCoreAIBotSkills FCoreAthenaBotManager::SkillsForLevel(int32_t Level)
@@ -2840,9 +3871,15 @@ index 0178781..2cd4d94 100644
 +    Skills.MaxTrackingInterpTime = FMath::Lerp(0.25f, 0.05f, T.AimTracking);
 +    Skills.MaxTrackingPredictionError = FMath::Lerp(250.0f, 30.0f, T.Prediction);
 +    Skills.SightRange = FMath::Lerp(4000.0f, 9000.0f, T.Awareness);
-+    Skills.MaxTrackingOffsetError = FMath::Lerp(70.0f, 20.0f, T.AimAccuracy);
-+    Skills.MaxTrackingDistanceNearError = FMath::Lerp(35.0f, 8.0f, T.AimAccuracy);
-+    Skills.MaxTrackingDistanceFarError = FMath::Lerp(50.0f, 12.0f, T.AimAccuracy);
++    // Fortnite-Offline-Server: Season 3 players hit about 21% of their shots (ml/models/s3, 19 replays; the median player
++    // 23%, the top tenth 22%); level 7 bots hit 33%, 57-73% within 10 m. The errors are a third wider (half as wide again
++    // with the per-gun spread and burst bloom took them to 13%).
++    // Above level 7 (AimAccuracy 2/3) the errors stop shrinking as fast: level 10 hit 39% (assault rifle past 35 m 31%), a
++    // good player's aim, not an aimbot's, is nearer 28-30%. Up to 40% wider at the top; levels 1-7 as they were.
++    const float TopAim = 1.0f + 0.4f * std::clamp((T.AimAccuracy - 2.0f / 3.0f) * 3.0f, 0.0f, 1.0f);
++    Skills.MaxTrackingOffsetError = FMath::Lerp(93.0f, 27.0f, T.AimAccuracy) * TopAim;
++    Skills.MaxTrackingDistanceNearError = FMath::Lerp(45.0f, 11.0f, T.AimAccuracy) * TopAim;
++    Skills.MaxTrackingDistanceFarError = FMath::Lerp(66.0f, 16.0f, T.AimAccuracy) * TopAim;
 +    // Building (Chapter 2's bots, 21.40's building skill set and bunker perk, scaled as their FScalableFloats are): how
 +    // often it answers fire with a build (buildFrequency), how fast the pieces go up (buildSpeed), how readily it boxes
 +    // up (defensiveBuilding) and puts a ramp in front (heightSeeking). Kept occasional: these bots fill matches.
@@ -2890,7 +3927,9 @@ index 0178781..2cd4d94 100644
 +    Building.TakeHeightMaxSteps = 1 + static_cast<int32_t>(std::lround(T.HeightSeeking * 2.0f));
 +    Building.TakeHeightCooldown = FMath::Lerp(30.0f, 8.0f, T.HeightSeeking);
 +    // Strafing and jumping in close fights; the strafe's old values at 0.5.
-+    Skills.StrafeStrength = std::min(FMath::Lerp(0.35f, 1.25f, T.Strafing), 1.0f);
++    // Fortnite-Offline-Server: 0.35 at 0, 0.8 at 0.5 (as before, the level's bots) and full input only at 1: capped at
++    // 1, the old line reached it at 0.72 and the trait's top quarter changed nothing.
++    Skills.StrafeStrength = T.Strafing <= 0.5f ? FMath::Lerp(0.35f, 0.8f, T.Strafing * 2.0f) : FMath::Lerp(0.8f, 1.0f, (T.Strafing - 0.5f) * 2.0f);
 +    Skills.StrafeChangeMin = FMath::Lerp(1.4f, 0.4f, T.Strafing);
 +    Skills.StrafeChangeMax = FMath::Lerp(3.5f, 0.9f, T.Strafing);
 +    Skills.CombatJumpOdds = FMath::Lerp(0.0f, 0.3f, T.Jumping);
@@ -2914,8 +3953,10 @@ index 0178781..2cd4d94 100644
 +    }
 +    // A mixed match (Core's 🟡): each bot gets a skill tier and a play style around the settings' traits, the way a public
 +    // lobby mixes new players, regulars and the odd sweat, each playing their own way.
++    // Fortnite-Offline-Server: Syndicate's lobby (SyndicateClassic BotSkillPolicy ResolveVariety, MIT): 15% beginners,
++    // 30% average, 30% above average, 20% advanced, 5% pros, centred on the settings (a trait step of 0.11 is a level).
 +    struct FTier { float Odds; float Offset; };
-+    static constexpr FTier Tiers[] = { { 0.30f, -0.25f }, { 0.40f, 0.0f }, { 0.22f, 0.18f }, { 0.08f, 0.35f } };
++    static constexpr FTier Tiers[] = { { 0.15f, -0.40f }, { 0.30f, -0.20f }, { 0.30f, 0.0f }, { 0.20f, 0.15f }, { 0.05f, 0.30f } };
 +    float Roll = FMath::FRand();
 +    float TierOffset = 0.0f;
 +    for (const FTier& Tier : Tiers)
@@ -2974,7 +4015,65 @@ index 0178781..2cd4d94 100644
      return Skills;
  }
  
-@@ -1351,9 +1482,48 @@ void FCoreAthenaBotManager::Tick()
+@@ -1035,17 +1178,51 @@ FCoreAthenaBotController* FCoreAthenaBotManager::FindBot(const UObject* PawnOrPl
+     {
+         return nullptr;
+     }
++    const auto Owns = [PawnOrPlayerState](const FCoreAthenaBotController* Bot)
++    {
++        return reinterpret_cast<const UObject*>(Bot->GetPawn()) == PawnOrPlayerState || reinterpret_cast<const UObject*>(Bot->GetPlayerState()) == PawnOrPlayerState
++            || reinterpret_cast<const UObject*>(Bot->GetController()) == PawnOrPlayerState;
++    };
++    // Fortnite-Offline-Server: every bot's target search asks this of every pawn it sees (a linear search of 99 bots, for
++    // 99 bots, each frame): the index (BotIndex, rebuilt each frame by RebuildBotIndex) answers for a bot's pawn, player
++    // state or controller; what it doesn't hold (a player's, or a pawn spawned since) is looked for as before.
++    if (const auto Found = BotIndex.find(PawnOrPlayerState); Found != BotIndex.end() && Owns(Found->second))
++    {
++        return Found->second;
++    }
++    // Not a bot's (a player's, a creature's): looked for once a frame, then answered from NotBots.
++    if (NotBots.count(PawnOrPlayerState))
++    {
++        return nullptr;
++    }
+     for (const auto& Bot : PlayerBots)
+     {
+-        if (reinterpret_cast<const UObject*>(Bot->GetPawn()) == PawnOrPlayerState || reinterpret_cast<const UObject*>(Bot->GetPlayerState()) == PawnOrPlayerState
+-            || reinterpret_cast<const UObject*>(Bot->GetController()) == PawnOrPlayerState)
++        if (Owns(Bot.get()))
+         {
++            BotIndex[PawnOrPlayerState] = Bot.get();
+             return Bot.get();
+         }
+     }
++    NotBots.insert(PawnOrPlayerState);
+     return nullptr;
+ }
+ 
++void FCoreAthenaBotManager::RebuildBotIndex()
++{
++    BotIndex.clear();
++    NotBots.clear();
++    for (const auto& Bot : PlayerBots)
++    {
++        for (const UObject* Object : { reinterpret_cast<const UObject*>(Bot->GetPawn()), reinterpret_cast<const UObject*>(Bot->GetPlayerState()), reinterpret_cast<const UObject*>(Bot->GetController()) })
++        {
++            if (Object)
++            {
++                BotIndex[Object] = Bot.get();
++            }
++        }
++    }
++}
++
+ bool FCoreAthenaBotManager::IsBotPawn(const UObject* Object)
+ {
+     return Instance && Instance->FindBot(Object) != nullptr;
+@@ -1348,12 +1525,52 @@ void FCoreAthenaBotManager::Tick()
+     }
+     const float DeltaSeconds = LastTickTime < 0.0f ? 0.0f : std::max(Now - LastTickTime, 0.0f);
+     LastTickTime = Now;
++    RebuildBotIndex();
      // The server's frame (wall clock, the 30 Hz cap included) and the bots' share of it, for the summary.
      const auto FrameStart = std::chrono::steady_clock::now();
      const FProcessIo FrameIo = ProcessIo();
@@ -3023,7 +4122,20 @@ index 0178781..2cd4d94 100644
          FrameMsSum += FrameMs;
          if (FrameMs > FrameMsMax)
          {
-@@ -1391,6 +1561,7 @@ void FCoreAthenaBotManager::Tick()
+@@ -1365,9 +1582,10 @@ void FCoreAthenaBotManager::Tick()
+     }
+     LastFrameStart = FrameStart;
+     LastFrameIo = FrameIo;
+-    if (!bEnabled && PlayerBots.empty())
++    if (!bEnabled && PlayerBots.empty() && !bZeroBuild)
+     {
+-        // The backend turned the bots off and the warmup's are gone: nothing to update until it turns them on again.
++        // The backend turned the bots off and the warmup's are gone: nothing to update until it turns them on again
++        // (Zero Build keeps it on: its rifts are looked for here, RefreshEnemies).
+         SetTickEnabled(false);
+         return;
+     }
+@@ -1391,6 +1609,7 @@ void FCoreAthenaBotManager::Tick()
              // The match is over and the bots stand still (the winners' screen is up): their update stops after this
              // frame's.
              bMatchEnded = true;
@@ -3031,7 +4143,7 @@ index 0178781..2cd4d94 100644
              SetTickEnabled(false);
          }
      }
-@@ -1402,7 +1573,9 @@ void FCoreAthenaBotManager::Tick()
+@@ -1402,7 +1621,9 @@ void FCoreAthenaBotManager::Tick()
  
      if (bHasNavigation)
      {
@@ -3041,7 +4153,7 @@ index 0178781..2cd4d94 100644
      }
      RefreshEnemies(Now);
      // The warmup island's weapons too, once the bots are in (they pick them up for a fight there).
-@@ -1425,6 +1598,14 @@ void FCoreAthenaBotManager::Tick()
+@@ -1425,6 +1646,14 @@ void FCoreAthenaBotManager::Tick()
      for (size_t Index = 0; Index < PlayerBots.size() && !bMatchEnded; ++Index)
      {
          const auto BotStart = std::chrono::steady_clock::now();
@@ -3056,7 +4168,7 @@ index 0178781..2cd4d94 100644
          PlayerBots[Index]->BeginUpdateSteps();
          PlayerBots[Index]->Tick(Now, DeltaSeconds);
          const double BotMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - BotStart).count();
-@@ -1457,6 +1638,7 @@ void FCoreAthenaBotManager::Tick()
+@@ -1457,6 +1686,7 @@ void FCoreAthenaBotManager::Tick()
      const double BotsMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - FrameStart).count();
      BotsMsSum += BotsMs;
      BotsMsMax = std::max(BotsMsMax, BotsMs);
@@ -3064,7 +4176,16 @@ index 0178781..2cd4d94 100644
      LogSummary(Now);
  #endif
  }
-@@ -2190,7 +2372,19 @@ bool FCoreAthenaBotManager::RegisterBot(float Now, uint8_t Team, uint8_t Squad,
+@@ -1919,6 +2149,8 @@ void FCoreAthenaBotManager::RemoveSurplusBots(int32_t Wanted, const std::map<uin
+             ? std::format(L"{} has {} empty places for bots", EFortTeam{ Bot->GetTeam() }.ToString(), Room)
+             : std::format(L"the match wants {} bots on teams of their own", Wanted));
+         Bot->Destroy();
++        BotIndex.clear();
++        NotBots.clear();
+         It = PlayerBots.erase(It);
+     }
+ }
+@@ -2190,7 +2422,19 @@ bool FCoreAthenaBotManager::RegisterBot(float Now, uint8_t Team, uint8_t Squad,
      }
      Bot->AssignDisplayName(Name);
      PlaceBotOnTeam(Bot.get());
@@ -3085,7 +4206,7 @@ index 0178781..2cd4d94 100644
      // Its look, chosen and loaded ahead (PrepareBotLoadouts).
      if (!LoadoutLoads.empty())
      {
-@@ -2277,6 +2471,12 @@ void FCoreAthenaBotManager::OnAircraftPhaseStarted(float Now)
+@@ -2277,6 +2521,12 @@ void FCoreAthenaBotManager::OnAircraftPhaseStarted(float Now)
      bAircraftStarted = true;
      AFortGameModeAthena* Athena = GetGameMode();
      AFortGameStateAthena* GameState = AthenaGameStateOf(Athena);
@@ -3098,7 +4219,7 @@ index 0178781..2cd4d94 100644
      AFortAthenaAircraft* Aircraft = nullptr;
      for (AActor* Actor : UGameplayStatics::GetAllActorsOfClass(Athena, AFortAthenaAircraft::StaticClass()))
      {
-@@ -2527,6 +2727,24 @@ const FCoreAthenaBotLandingSpot* FCoreAthenaBotManager::GetPOI(int32_t Index) co
+@@ -2527,6 +2777,24 @@ const FCoreAthenaBotLandingSpot* FCoreAthenaBotManager::GetPOI(int32_t Index) co
      return Index >= 0 && Index < static_cast<int32_t>(LandingSpots.size()) ? &LandingSpots[static_cast<size_t>(Index)] : nullptr;
  }
  
@@ -3123,7 +4244,7 @@ index 0178781..2cd4d94 100644
  int32_t FCoreAthenaBotManager::CountHuntersOf(const AFortPawn* Target, const FCoreAthenaBotController* Except) const
  {
      return static_cast<int32_t>(std::count_if(PlayerBots.begin(), PlayerBots.end(), [Target, Except](const auto& Bot) { return Bot.get() != Except && Bot->IsAlive() && Bot->GetHuntTarget() == Target; }));
-@@ -3095,10 +3313,14 @@ void FCoreAthenaBotManager::ApplyBotDamage(FCoreAthenaBotController* Attacker, A
+@@ -3095,10 +3363,14 @@ void FCoreAthenaBotManager::ApplyBotDamage(FCoreAthenaBotController* Attacker, A
          Victim->SetHealth(Health);
          return;
      }
@@ -3139,7 +4260,7 @@ index 0178781..2cd4d94 100644
          VictimBot->EnterDBNO(Attacker->GetPlayerState(), Now);
          return;
      }
-@@ -3113,7 +3335,7 @@ void FCoreAthenaBotManager::ApplyBotDamage(FCoreAthenaBotController* Attacker, A
+@@ -3113,7 +3385,7 @@ void FCoreAthenaBotManager::ApplyBotDamage(FCoreAthenaBotController* Attacker, A
              break;
          }
      }
@@ -3148,7 +4269,7 @@ index 0178781..2cd4d94 100644
      Victim->SetHealth(1.0f);
      Victim->ForceKill(DeathReason, reinterpret_cast<AController*>(Attacker->GetController()), reinterpret_cast<AActor*>(Attacker->GetPawn()));
  #endif
-@@ -3536,6 +3758,24 @@ AFortPlayerStateAthena* FCoreAthenaBotManager::LastBotAttackerOf(const AFortPawn
+@@ -3536,6 +3808,24 @@ AFortPlayerStateAthena* FCoreAthenaBotManager::LastBotAttackerOf(const AFortPawn
      return nullptr;
  }
  
@@ -3173,7 +4294,7 @@ index 0178781..2cd4d94 100644
  void FCoreAthenaBotManager::CheckWinConditionLastManStanding(APawn* FinisherPawn, const UFortWeaponItemDefinition* FinishingWeapon, uint8_t DeathCause)
  {
  #if WITH_SERVER_CODE
-@@ -3566,6 +3806,7 @@ void FCoreAthenaBotManager::CheckWinConditionLastManStanding(APawn* FinisherPawn
+@@ -3566,6 +3856,7 @@ void FCoreAthenaBotManager::CheckWinConditionLastManStanding(APawn* FinisherPawn
      if (Teams.size() <= 1)
      {
          bMatchEnded = true;
@@ -3181,7 +4302,7 @@ index 0178781..2cd4d94 100644
          if (HumansLeft > 0)
          {
              AFortPlayerControllerAthena* Winner = Alive[0];
-@@ -3634,6 +3875,7 @@ void FCoreAthenaBotManager::CheckWinConditionLastManStanding(APawn* FinisherPawn
+@@ -3634,6 +3925,7 @@ void FCoreAthenaBotManager::CheckWinConditionLastManStanding(APawn* FinisherPawn
      {
          bMatchEnded = true;
          Log::Info(L"Battle Royale bots: every player is out and gone with {} bots left, so the match ends", GetAliveBotCount());
@@ -3189,7 +4310,106 @@ index 0178781..2cd4d94 100644
          // A players' team whose bots are still in shares the place of the teams left.
          for (const uint8_t Team : Teams)
          {
-@@ -3663,6 +3905,10 @@ void FCoreAthenaBotManager::RefreshEnemies(float Now)
+@@ -3647,9 +3939,98 @@ void FCoreAthenaBotManager::CheckWinConditionLastManStanding(APawn* FinisherPawn
+ #endif
+ }
+ 
++int32_t FCoreAthenaBotManager::PitWalls(UObject* Context, const FVector& Location)
++{
++#if WITH_SERVER_CODE
++    const FVector Chest(Location.X, Location.Y, Location.Z + 40.0f);
++    // Above a jump too (1.5 m over the capsule's middle): a fence, a car, a rock or a walkable slope blocks the chest's
++    // trace and not this one, so only what is too high to jump out of counts as a wall.
++    const FVector High(Location.X, Location.Y, Location.Z + 150.0f);
++    FVector Hit;
++    if (UKismetSystemLibrary::LineTraceSingle(Context, Chest, FVector(Chest.X, Chest.Y, Chest.Z + 1500.0f), 0, false, true, Hit))
++    {
++        return -1;
++    }
++    int32_t Walls = 0;
++    for (int32_t Side = 0; Side < 8; ++Side)
++    {
++        const float Yaw = static_cast<float>(Side) * 0.785398f;
++        const FVector Way(std::cos(Yaw), std::sin(Yaw), 0.0f);
++        if (UKismetSystemLibrary::LineTraceSingle(Context, Chest, Chest + Way * 500.0f, 0, false, true, Hit)
++            && UKismetSystemLibrary::LineTraceSingle(Context, High, High + Way * 500.0f, 0, false, true, Hit))
++        {
++            ++Walls;
++        }
++    }
++    return Walls;
++#else
++    return -1;
++#endif
++}
++
++void FCoreAthenaBotManager::ZeroBuildRift(AFortPawn* Pawn, float Now)
++{
++#if WITH_SERVER_CODE
++    AFortPlayerPawnAthena* Athena = Cast<AFortPlayerPawnAthena>(reinterpret_cast<UObject*>(Pawn));
++    UCharacterMovementComponent* Movement = static_cast<ACharacter*>(reinterpret_cast<APawn*>(Pawn))->CharacterMovement;
++    // Only in the match proper (not the warmup island, not after the end), and only where a skydive can be started: a
++    // rift without one would drop the player 100 m.
++    const bool bCanSkydive = AFortPlayerPawnAthena::HasIsSkydiving() && Finder::ResolveBotSkydiveLive(AFortPlayerPawnAthena::IsSkydivingOffset());
++    if (!bAircraftStarted || bMatchEnded || !bCanSkydive || !Athena || !Movement || Pawn->bIsDying || Pawn->bIsDBNO || Athena->bIsSkydiving || Athena->bIsParachuteOpen)
++    {
++        PitWatches.erase(Pawn);
++        return;
++    }
++    FPitWatch& Watch = PitWatches[Pawn];
++    Watch.LastSeen = Now;
++    const FVector Location = Pawn->GetTransform().GetLocation();
++    // Within 3 m (in a hole a player can't go further), and no hit taken meanwhile (a fight in an alley isn't a hole).
++    const float Vitals = Pawn->GetHealth() + Pawn->GetShield();
++    if (Watch.Since <= 0.0f || (FVector(Location.X - Watch.Anchor.X, Location.Y - Watch.Anchor.Y, 0.0f)).Size() > 300.0f || Vitals < Watch.Vitals)
++    {
++        Watch.Anchor = Location;
++        Watch.Since = Now;
++        Watch.Jumps = 0;
++    }
++    Watch.Vitals = Vitals;
++    // A jump: rising off the ground (a new upward move counts once).
++    const bool bRising = static_cast<FVector>(Movement->Velocity).Z > 300.0f;
++    if (bRising && !Watch.bWasRising)
++    {
++        ++Watch.Jumps;
++    }
++    Watch.bWasRising = bRising;
++    if (Now - Watch.Since < 8.0f || Watch.Jumps < 3 || Now < Watch.NextRift)
++    {
++        return;
++    }
++    // Open sky above (not a room), walls too high to jump within 5 m on at least 6 of 8 sides. Not a hole: its jumps
++    // start over (it is looked at again after three more), with no wait.
++    const int32_t Walls = PitWalls(Pawn, Location);
++    if (Walls < 6)
++    {
++        Watch.Jumps = 0;
++        return;
++    }
++    Watch.NextRift = Now + 30.0f;
++    // As the minigames' sky spawn does (FortMinigame.cpp): teleported up, then a skydive (BeginSkydiving, not from the bus).
++    const FVector Up(Location.X, Location.Y, Location.Z + 10000.0f);
++    if (!reinterpret_cast<AActor*>(Pawn)->TeleportTo(Up, reinterpret_cast<AActor*>(Pawn)->GetActorRotation()))
++    {
++        return;
++    }
++    Athena->BeginSkydiving(false);
++    Pawn->ForceNetUpdate();
++    Watch.Since = 0.0f;
++    Log::Info(L"Zero Build: a player stuck in a hole at ({:.0f}, {:.0f}, {:.0f}) ({} walls of 8, {} jumps) is taken up by a rift", Location.X, Location.Y, Location.Z, Walls, Watch.Jumps);
++#endif
++}
++
+ void FCoreAthenaBotManager::RefreshEnemies(float Now)
+ {
+     EnemyPawns.clear();
++    // Zero Build's rift watches of players no longer about (out, left).
++    std::erase_if(PitWatches, [Now](const auto& Entry) { return Now - Entry.second.LastSeen > 2.0f; });
+     AFortGameModeAthena* Athena = GetGameMode();
+     if (!Athena)
+     {
+@@ -3663,6 +4044,10 @@ void FCoreAthenaBotManager::RefreshEnemies(float Now)
          }
      }
      const TArray<AFortPlayerControllerAthena*>& Alive = Athena->AlivePlayers;
@@ -3200,10 +4420,14 @@ index 0178781..2cd4d94 100644
      for (int32_t Index = 0; Index < Alive.Num(); ++Index)
      {
          AFortPlayerControllerAthena* Player = Alive[Index];
-@@ -3670,8 +3916,30 @@ void FCoreAthenaBotManager::RefreshEnemies(float Now)
+@@ -3670,8 +4055,34 @@ void FCoreAthenaBotManager::RefreshEnemies(float Now)
          if (Pawn)
          {
              EnemyPawns.emplace_back(Pawn);
++            if (bZeroBuild && !FindBot(reinterpret_cast<const UObject*>(Pawn)))
++            {
++                ZeroBuildRift(Pawn, Now);
++            }
 +            AFortWeapon* Weapon = AFortPawn::HasCurrentWeapon() && !FindBot(reinterpret_cast<const UObject*>(Pawn)) ? static_cast<AFortWeapon*>(Pawn->CurrentWeapon) : nullptr;
 +            if (Weapon && !Pawn->bIsDying)
 +            {
@@ -3231,7 +4455,7 @@ index 0178781..2cd4d94 100644
      // The AI pawns (CoreV2 #446: bots took the Cube Monsters' hits and never fought back). AFortAIPawn is every build's
      // (Save the World's husks), but a Battle Royale match has such pawns only where its playlist spawns them (6.20-6.22's
      // Deimos playlists: the AI director's Deimos_Fiend and Deimos_Brute, team Monster); elsewhere the list stays empty
-@@ -3832,6 +4100,42 @@ void FCoreAthenaBotManager::LogSummary(float Now)
+@@ -3832,6 +4243,42 @@ void FCoreAthenaBotManager::LogSummary(float Now)
          FrameCount ? FrameMsSum / FrameCount : 0.0, FrameMsMax, static_cast<double>(FrameMaxIo.ReadBytes) / (1024.0 * 1024.0), FrameMaxIo.PageFaults,
          static_cast<double>(WindowIo.ReadBytes) / (1024.0 * 1024.0), WindowIo.PageFaults, FrameSpikes, FrameCount ? BotsMsSum / FrameCount : 0.0, BotsMsMax, BotTickMsMax,
          SlowestBotTick, LootRefreshMsMax, SpawnMsMax);
@@ -3275,7 +4499,7 @@ index 0178781..2cd4d94 100644
      FrameMsSum = 0.0;
      FrameMsMax = 0.0;
 diff --git a/FortniteGame/Source/FortniteGame/Private/Athena/FortGameModeAthena.cpp b/FortniteGame/Source/FortniteGame/Private/Athena/FortGameModeAthena.cpp
-index c43594f..72aaa5a 100644
+index c43594f..7a737e6 100644
 --- a/FortniteGame/Source/FortniteGame/Private/Athena/FortGameModeAthena.cpp
 +++ b/FortniteGame/Source/FortniteGame/Private/Athena/FortGameModeAthena.cpp
 @@ -1212,6 +1212,11 @@ namespace
@@ -3343,7 +4567,31 @@ index c43594f..72aaa5a 100644
              // The bot names registered players have (CoreV2 #446; a backend from before it sends no takenBotNames).
              const bool bTakenBotNames = bAnswered && Body.find("\"takenBotNames\"") != std::string::npos;
              std::vector<std::wstring> TakenBotNames = bTakenBotNames ? JsonStringArray(Body, "takenBotNames") : std::vector<std::wstring>();
-@@ -2109,6 +2153,287 @@ void AFortGameModeAthena::AskEventCalendarRevision()
+@@ -1316,10 +1360,22 @@ namespace
+             const std::string StormPercent = bAnswered ? BackendRequest::JsonField(Body, "stormDestructionPercent") : std::string();
+             const int32_t MegaStormPercent = !StormPercent.empty() && std::isdigit(static_cast<unsigned char>(StormPercent[0]))
+                 ? std::clamp(std::atoi(StormPercent.c_str()), 0, 100) : -1;
++            // Fortnite-Offline-Server: Zero Build (a backend without the mode sends none: off).
++            const bool bZeroBuild = bAnswered && BackendRequest::JsonField(Body, "zeroBuild") == "true";
+             GameThread::Enqueue([Watch, AccountIds, Status, bAnswered, WarmupSeconds, bLateJoin, bOpen, MaxPlayers, Parties = std::move(Parties), bBots, BotSettings, NoFill = std::move(NoFill),
+-                MegaStormPercent, bModeOff, BotsModeOff = std::move(BotsModeOff), bTakenBotNames, TakenBotNames = std::move(TakenBotNames)]() mutable
++                MegaStormPercent, bModeOff, BotsModeOff = std::move(BotsModeOff), bTakenBotNames, TakenBotNames = std::move(TakenBotNames), bZeroBuild]() mutable
+             {
+                 Watch->bAsking = false;
++                if (bAnswered && FCoreAthenaBotManager::bZeroBuild != bZeroBuild)
++                {
++                    FCoreAthenaBotManager::bZeroBuild = bZeroBuild;
++                    // Its rifts are looked for in the bots' update, which a match without bots doesn't run otherwise.
++                    if (FCoreAthenaBotManager* RiftManager = bZeroBuild ? FCoreAthenaBotManager::Get() : nullptr)
++                    {
++                        RiftManager->SetTickEnabled(true);
++                    }
++                    Log::Info(L"Zero Build: {} (nobody builds, the bots gather no materials)", bZeroBuild ? L"on" : L"off");
++                }
+                 if (bModeOff && !Watch->bLoggedBotsModeOff)
+                 {
+                     Watch->bLoggedBotsModeOff = true;
+@@ -2109,6 +2165,287 @@ void AFortGameModeAthena::AskEventCalendarRevision()
  #endif
  }
  
@@ -3643,11 +4891,48 @@ index 96a9c28..7dfdee2 100644
          // The llamas, the spawn percents, the warmup's reports and the results from the game state's GamePhaseChanged,
          // the match's playlist from its OnCurrentPlaylistLoaded.
          Athena->BindMatchEvents();
+diff --git a/FortniteGame/Source/FortniteGame/Private/Player/FortPlayerControllerBuilding.cpp b/FortniteGame/Source/FortniteGame/Private/Player/FortPlayerControllerBuilding.cpp
+index da2a4c6..dd57434 100644
+--- a/FortniteGame/Source/FortniteGame/Private/Player/FortPlayerControllerBuilding.cpp
++++ b/FortniteGame/Source/FortniteGame/Private/Player/FortPlayerControllerBuilding.cpp
+@@ -4,6 +4,7 @@
+ #include "Abilities/GameplayAbility.h"
+ #include "AbilitySystemComponent.h"
+ #include "Athena/AI/AthenaNavSystem.h"
++#include "Athena/AI/CoreAthenaBotManager.h"
+ #include "Building/BuildingSMActor.h"
+ #include "Building/BuildingStructuralSupportSystem.h"
+ #include "Engine/World.h"
+@@ -274,6 +275,12 @@ void AFortPlayerController::ServerCreateBuildingActor_Implementation(const FBuil
+ ABuildingSMActor* AFortPlayerController::CreateBuildingActor(const FBuildingClassData& InBuildingClassData, const FVector& InBuildLoc, const FRotator& InBuildRot, bool bMirrored)
+ {
+ #if WITH_SERVER_CODE
++    // Fortnite-Offline-Server: Zero Build: no piece is placed, by a build or a trap's floor in the air (the client's
++    // preview goes away).
++    if (FCoreAthenaBotManager::bZeroBuild)
++    {
++        return nullptr;
++    }
+     FBuildingClassData BuildingClassData = InBuildingClassData;
+     if (!ValidateBuildingClassData(BuildingClassData))
+     {
 diff --git a/FortniteGame/Source/FortniteGame/Public/Athena/AI/AthenaNavSystem.h b/FortniteGame/Source/FortniteGame/Public/Athena/AI/AthenaNavSystem.h
-index 2dba827..1acec82 100644
+index 2dba827..9e2aed0 100644
 --- a/FortniteGame/Source/FortniteGame/Public/Athena/AI/AthenaNavSystem.h
 +++ b/FortniteGame/Source/FortniteGame/Public/Athena/AI/AthenaNavSystem.h
-@@ -36,6 +36,9 @@ public:
+@@ -3,8 +3,11 @@
+ #include "Math/Box.h"
+ #include "Math/Vector.h"
+ 
++#include <vector>
++
+ class AActor;
+ class ANavigationData;
++class UObject;
+ class UWorld;
+ 
+ // Core's backport of 8.30's Battle Royale navigation (UAthenaNavSystem, UAthenaNavSystemConfig, CoreV2 #233): 3.0's
+@@ -36,6 +39,9 @@ public:
      // cache's file read on a worker thread; then the tile cache: cached tiles added, the bots' cached tiles kept active,
      // new tiles saved.
      static void Tick(UWorld* World);
@@ -3657,7 +4942,7 @@ index 2dba827..1acec82 100644
  
      // A structure was built, edited or destroyed at Actor (Core's building and harvesting code): the cached tiles under
      // it are out of date for this match, so the engine builds them again when a bot comes near, and none of them is
-@@ -47,6 +50,8 @@ public:
+@@ -47,6 +53,8 @@ public:
  
      // 8.30's AAthenaNavInvokerBox / RegisterNavGenerationObserver: navigation is generated around Invoker while it lives.
      static void RegisterNavigationInvoker(AActor* Invoker);
@@ -3667,7 +4952,7 @@ index 2dba827..1acec82 100644
      // UNavigationSystem::ProjectPointToNavigation on the bots' navmesh: the nearest navmesh point within Extent of Point,
      // or false when there is none there (no tile built yet, or inside geometry).
 diff --git a/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotController.h b/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotController.h
-index 745fc01..48ffe86 100644
+index 745fc01..e2fcf67 100644
 --- a/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotController.h
 +++ b/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotController.h
 @@ -89,6 +89,11 @@ struct FCoreAthenaBotBuildingSkills
@@ -3725,7 +5010,7 @@ index 745fc01..48ffe86 100644
  struct FCoreAIBotSkills
  {
      float MaxTimeBetweenShots = 0.4f;
-@@ -117,6 +153,26 @@ struct FCoreAIBotSkills
+@@ -117,6 +153,29 @@ struct FCoreAIBotSkills
      float MaxTrackingDistanceFarError = 33.0f;
      float MaxTrackingHeightOffsetError = 0.6f;
      FCoreAthenaBotBuildingSkills Building;
@@ -3746,13 +5031,16 @@ index 745fc01..48ffe86 100644
 +    // Fortnite-Offline-Server: a scale on each gun's fighting distance (FightRangeOf): under 1 the bot pushes in closer
 +    // (aggression).
 +    float FightRangeScale = 1.0f;
++    // Fortnite-Offline-Server: a scale on the aim error that offsets AimSituationScale's average, so the situational
++    // misses (running, under fire, a target in the air, the first shots) move misses around instead of adding them.
++    float AimSituationBase = 0.8f;
 +    // The traits these skills came from, and the style a mixed match gave the bot (for the log and later behaviour).
 +    FCoreBotTraits Traits;
 +    const wchar_t* Style = L"uniform";
  };
  
  // 21.40's EOrientedConstructionBuildingType (its values aren't in the PDB; Epic's has walls along X and Y, floors and
-@@ -278,9 +334,12 @@ public:
+@@ -278,9 +337,12 @@ public:
      void SetOnPlayersTeam(bool bInOnPlayersTeam) { bOnPlayersTeam = bInOnPlayersTeam; }
      int32_t GetBotIndex() const { return BotIndex; }
      ECoreAthenaBotState GetState() const { return State; }
@@ -3765,7 +5053,7 @@ index 745fc01..48ffe86 100644
      // The enemy the bot is fighting, the opponent it is heading for (Investigate), and the POI it is travelling to (an
      // index into the manager's spots, or -1).
      AFortPawn* GetCurrentTarget() const { return CurrentTarget.Get(); }
-@@ -294,7 +353,8 @@ public:
+@@ -294,7 +356,8 @@ public:
      UObject* GetLoadoutCharacter() const { return LoadoutCharacter; }
  
      void AssignDisplayName(const std::wstring& Name);
@@ -3775,7 +5063,7 @@ index 745fc01..48ffe86 100644
      // Spawns the warmup pawn at Location and possesses it.
      bool SpawnPawnAt(const FVector& Location, float Yaw, bool bSkydive);
      // The bus has left: the warmup pawn goes, the bot rides the aircraft until its jump.
-@@ -466,6 +526,15 @@ private:
+@@ -466,6 +529,26 @@ private:
      // 21.40's UFortAthenaAIBotEvaluator_Investigate: an armed bot with nothing left to loot heads for a player near it
      // (a few bots at most go for the same one), and for an enemy it just lost sight of.
      bool Investigate(float Now);
@@ -3787,11 +5075,22 @@ index 745fc01..48ffe86 100644
 +    // runs for a spot out of the shooter's sight, then heals there (Syndicate's BotSurvival FLEE_OR_HIDE, without builds).
 +    bool Retreat(float Now);
 +    // The healing item Heal would use now, none when nothing carried is worth using (a mini shield at 50 shield...).
-+    UFortItemDefinition* BestHealItem() const;
++    // MaxUseTime: only items used within that many seconds (a heal that has to end before the storm sends it off).
++    UFortItemDefinition* BestHealItem(float MaxUseTime = 1.0e9f) const;
++    // Fortnite-Offline-Server: whether the bot has stood within 1 m for Seconds while going for Target (a pickup or a
++    // container), not pickaxing; asked every frame it goes for one (a gap of half a second starts it again).
++    bool StandingFor(float Now, const FVector& Location, const void* Target, float Seconds);
++    FVector StandAnchor;
++    float StandSince = 0.0f;
++    float StandSeen = -100.0f;
++    const void* StandTarget = nullptr;
++    const void* LedgeTarget = nullptr;
++    int32_t LedgeTurnsAtTarget = 0;
++    int32_t LeftStanding = 0;
      // 21.40's UFortAthenaAIBotEvaluator_SelectNextPOI (FindNextBestPOI, SetNextDestination, ClearNextDestination): the
      // spot looted out, the next one nearby inside the safe zone (FCoreAthenaBotManager::FindNextBestPOI).
      bool SelectNextPOI(float Now);
-@@ -475,12 +544,27 @@ private:
+@@ -475,12 +558,28 @@ private:
      void ManageWeapon(float Now);
      // 21.40's _Loot (GatherNearestLoot): the nearest weapon or ammo on the floor, and taking it.
      bool Loot(float Now, float MaxDistance);
@@ -3803,7 +5102,9 @@ index 745fc01..48ffe86 100644
      // Whether the safe zone comes before anything but a fight (CoreV2 #233: bots looted, healed or stood fighting until
      // the storm caught them, and died in it): in the storm already, or outside the next circle with no more time before
      // the storm finishes closing in than it takes to run there. A fight on the way is still taken, moving inwards.
-     bool ShouldHeadForSafeZone(float Now) const;
+-    bool ShouldHeadForSafeZone(float Now) const;
++    // bPreview: a look ahead (Heal asks about the end of a heal), which leaves StormSince as it is.
++    bool ShouldHeadForSafeZone(float Now, bool bPreview = false) const;
 +    // Fortnite-Offline-Server: outside the storm's current circle; and so, heading for the next one with no enemy within
 +    // 15 m, running instead of fighting.
 +    bool IsInStorm() const;
@@ -3819,7 +5120,7 @@ index 745fc01..48ffe86 100644
      // 21.40's _Movement (TryToUnstuck) and a wander inside the safe zone.
      void Wander(float Now);
      void MoveTowards(const FVector& Destination, float Now, float AcceptanceRadius = 100.0f);
-@@ -621,6 +705,15 @@ private:
+@@ -621,6 +720,15 @@ private:
      // an enemy it hadn't seen shoots it (OddsToBeUsedAgainstUnknownThreat), with a cone roof (OddsToUseRoofBuilding) and a
      // ramp inside towards the threat (OddsToBuildForwardRamp). Threat may be null (the way the bot faces then).
      bool Bunker(float Now, AFortPawn* Threat, bool bUnknownThreat);
@@ -3835,7 +5136,7 @@ index 745fc01..48ffe86 100644
      // Starts a build: the origin cell is the bot's, forward the grid axis nearest the way to Towards. Pieces the bot can't
      // afford or whose place isn't clear are left out; false when none is left.
      bool StartBuildingQueue(float Now, const FVector& Towards, const std::vector<FCoreAthenaBotBuildDescriptor>& Descriptors, float InitialDelay, float SameDelay, float SameDeviation,
-@@ -750,6 +843,10 @@ private:
+@@ -750,6 +858,10 @@ private:
      float HarvestTargetTime = 0.0f;
      float NextHarvestSwing = 0.0f;
      float NextHarvestSearch = 0.0f;
@@ -3846,7 +5147,7 @@ index 745fc01..48ffe86 100644
      FVector HarvestPoint;
      bool bHarvestToUnstick = false;
      // Set when the building's resource spawn credited the bot during a swing.
-@@ -758,6 +855,20 @@ private:
+@@ -758,6 +870,20 @@ private:
      // DefensiveBuilding's CanBuildNextTimeDelay and the bunker perk's cooldown: no build of that kind before these times.
      float NextDefensiveBuildTime = 0.0f;
      float NextBunkerTime = 0.0f;
@@ -3867,7 +5168,7 @@ index 745fc01..48ffe86 100644
      // UFortAthenaAIBotBuildingComponent: the build under way (BuildQueue), the next piece's index, when the last piece went
      // up (LastBuildTime) and the wait before the next (DelayBeforeNextBuildPiece).
      FCoreAthenaBotBuildingQueue BuildQueue;
-@@ -768,6 +879,43 @@ private:
+@@ -768,8 +894,111 @@ private:
      float HideEndTime = 0.0f;
      int32_t PiecesBuilt = 0;
      int32_t BuildsStarted = 0;
@@ -3888,6 +5189,8 @@ index 745fc01..48ffe86 100644
 +    bool bLedgeBlocked = false;
 +    bool bLedgeTurned = false;
 +    FVector LedgeDirection;
++    // The way it asked about at that look: a new way (over 45 deg off) is looked at again at once.
++    FVector LedgeAskedWay;
 +    int32_t LedgeTurns = 0;
 +    int32_t LedgeStops = 0;
 +    // How the bot went out: 1 falling, 2 in the storm (set when it dies), 0 anything else.
@@ -3901,17 +5204,83 @@ index 745fc01..48ffe86 100644
 +    int32_t Sidesteps = 0;
 +    // TrappedRecovery: its position every 5 s over the last 30 s, the way out it is walking, and how often.
 +    std::vector<std::pair<float, FVector>> TrapSamples;
++    // With each sample: ledge turns and stops so far, and the distance to its goal.
++    std::vector<std::pair<int32_t, float>> TrapLedgeSamples;
++    // Loot's own next pickup in the frame it took one (once).
++    bool bLootChained = false;
++    // RangeAttack this frame: far outside its gun's distance, sprinting in (no sights, no shots).
++    bool bSprintingIn = false;
++    // An assault rifle or a sniper in its hands (fights from twice its distance).
++    bool HoldsLongGun() const;
++    // Whether RangeAttack sprints in now (hysteresis, return fire, a target it can't reach); its state.
++    bool WantsToSprintIn(const FVector& TargetLocation, float Distance, float RangeMax, float Now);
++    bool bWasSprintingIn = false;
++    // ManageWeapon: this fight's enemy, and whether the bot pushes it with a shotgun or an SMG (rolled once per enemy).
++    const void* PushRolledFor = nullptr;
++    bool bPushing = false;
++    float SprintCheckTime = -1.0f;
++    float SprintCheckDistance = 0.0f;
++    float SprintBlockedUntil = 0.0f;
 +    float NextTrapSample = 0.0f;
 +    float RecoveryUntil = 0.0f;
 +    FVector RecoveryGoal;
++    // The last way out it took: trapped again within 90 s, a point near it isn't tried again.
++    FVector LastRecoveryGoal;
++    float LastRecoveryTime = -1000.0f;
 +    float LastTrappedTime = 0.0f;
 +    int32_t TrappedEvents = 0;
 +    int32_t Rescues = 0;
 +    std::map<std::wstring, float> SteerSeconds;
      int32_t Swings = 0;
      int32_t BreakThroughs = 0;
++    // Fortnite-Offline-Server: match stats: still time by what the bot was doing (last frame's intent), and its
++    // break-throughs by what set them off (FreeItself's reason, loot or a chest under the floor).
++    std::map<std::wstring, float> StillSecondsByIntent;
++    // Fortnite-Offline-Server (diagnostic): still spells by intent and length (<1 s, 1-3, 3-8, 8+): count and seconds.
++    std::map<std::wstring, std::pair<int32_t, float>> StillSpells;
++    float StillSpellStart = -1.0f;
++    std::wstring StillSpellKey;
++    // (diagnostic) what a loot stop under a second started with: steering reason / path, the target's distance band.
++    std::wstring StillSpellWhy;
++    // (diagnostic) a fall on foot: where and how it started (logged when it ends 10 m or more lower, or kills the bot).
++    bool bFallNoted = false;
++    FVector FallFrom;
++    std::wstring FallWhy;
++    void LogFall(const FVector& To, const wchar_t* How);
++    std::map<std::wstring, int32_t> LootStops;
++    std::map<std::wstring, int32_t> BreakThroughsByWhy;
++    const wchar_t* LastIntent = L"";
++    const wchar_t* BreakWhy = L"";
++    // Fortnite-Offline-Server: where loot or a chest was behind a strong wall the bot was held up against twice: what
++    // lies within 5 m of it is left alone for 90 s (it went for the next item behind the same wall). Not chests: each one
++    // is tried by itself (the spots took chests reached through a door, 2.5 -> 1.6 chests a bot).
++    std::vector<std::pair<FVector, float>> BlockedSpots;
++    // Fortnite-Offline-Server: since when the bot has been in the storm (-1: it isn't), for its patience in the first circles.
++    mutable float StormSince = -1.0f;
++    // Fortnite-Offline-Server: the shot (its NextShotTime) and the target the aim error was drawn for, and the shots in
++    // the current burst (the spread grows with them, as a held trigger's bloom does).
++    float AimErrorShotTime = -1.0f;
++    const void* AimErrorTarget = nullptr;
++    int32_t BurstShots = 0;
++    float LastBurstShot = -100.0f;
++    // Fortnite-Offline-Server: Retreat reached cover: Heal may start (and go on) while the last hit is 1.5 s old, instead
++    // of IsInCombat's 4 s, during which the bot stood in cover doing nothing.
++    bool bHealingInCover = false;
++    bool IsHealBlocked(float Now) const;
++    bool IsInBlockedSpot(const FVector& Where, float Now) const;
++    // Fortnite-Offline-Server: progress on the ground measured by the pawn's own movement (30 cm), whatever paths are
++    // asked for meanwhile, and the short steps out it takes when it has none for 2 s (after Syndicate's
++    // BotNavigation::Progress and StartGroundRescue, MIT).
++    FVector StallAnchor;
++    float StallAnchorTime = -1.0f;
++    float StallLastSeen = -100.0f;
++    FVector RescueArea;
++    float RescueAreaTime = -100.0f;
++    int32_t RescuesHere = 0;
      // Squads: who downed the bot, when, its bleed, and the teammate it is reviving.
-@@ -872,6 +1020,8 @@ private:
+     // Out of the match: the player it spectates, and when it stops (-1: not spectating).
+     TWeakObjectPtr<AFortPlayerStateAthena> SpectatedPlayer;
+@@ -872,6 +1101,8 @@ private:
      // TryToUnstuck's last give-up (a second one near it gives up the far goal too), and the move goal it measures
      // progress towards: how near it got and since when.
      float LastGiveUpTime = -100.0f;
@@ -3920,7 +5289,7 @@ index 745fc01..48ffe86 100644
      FVector LastGiveUpLocation;
      FVector ProgressGoal;
      float ProgressDistance = -1.0f;
-@@ -997,6 +1147,23 @@ private:
+@@ -997,6 +1228,23 @@ private:
      TWeakObjectPtr<AFortPawn> LastSeenTarget;
      FVector LastSeenTargetLocation;
      int32_t Hunts = 0;
@@ -3944,7 +5313,7 @@ index 745fc01..48ffe86 100644
      // SelectNextPOI: the spots the bot has been to or looted, the one it heads for, where on the ground, and when it
      // looks for the next.
      std::vector<int32_t> VisitedPOIs;
-@@ -1004,7 +1171,13 @@ private:
+@@ -1004,7 +1252,13 @@ private:
      FVector POIDestination;
      float NextPOISearch = 0.0f;
      float POITravelStartTime = 0.0f;
@@ -3959,18 +5328,19 @@ index 745fc01..48ffe86 100644
      int32_t BotsIgnored = 0;
      // FollowMapMarker: the squad's marker it heads for (on the ground there), when it looks again, and how many it went to.
 diff --git a/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotManager.h b/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotManager.h
-index 9cd7425..01f5649 100644
+index 9cd7425..425eb6b 100644
 --- a/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotManager.h
 +++ b/FortniteGame/Source/FortniteGame/Public/Athena/AI/CoreAthenaBotManager.h
-@@ -14,6 +14,7 @@
+@@ -14,6 +14,8 @@
  #include <memory>
  #include <set>
  #include <string>
 +#include <unordered_map>
++#include <unordered_set>
  #include <vector>
  
  class ABuildingContainer;
-@@ -48,6 +49,16 @@ struct FCoreAthenaBotSettings
+@@ -48,6 +50,16 @@ struct FCoreAthenaBotSettings
      // matchmaking ticket's player.option.fillTeam=false, Squad Fill on No Fill), whose teams get none.
      bool bFillPlayerTeams = false;
      std::vector<std::wstring> NoFillAccounts;
@@ -3987,7 +5357,19 @@ index 9cd7425..01f5649 100644
  };
  
  // A weapon, ammo or healing item pickup lying on the floor, as the bots' loot search sees it (refreshed every few
-@@ -250,8 +261,22 @@ public:
+@@ -126,6 +138,11 @@ public:
+     // their teams may take bots (PlayerTeamSlots). CoreV2 #330.
+     void SetFillAnswered(const std::vector<std::wstring>& AccountIds);
+     const FCoreAthenaBotSettings& GetSettings() const { return Settings; }
++    // Fortnite-Offline-Server: Zero Build, a mode of its own (the backend's warmup answer "zeroBuild"): nobody builds,
++    // players or bots, and the bots don't gather materials. Off when the backend sends none.
++    static inline bool bZeroBuild = false;
++    // A hole at Location: -1 under a roof (no open sky 15 m up), else how many of 8 sides have a wall within 5 m at chest height.
++    static int32_t PitWalls(UObject* Context, const FVector& Location);
+     // Bot names and registered players (CoreV2 #446): the names bots take first this match (the first CheckedBotNames of
+     // its shuffled order of the list), which the warmup report asks the backend about until it answers; and
+     // the backend's answer, the ones a registered account has as its display name (compared without case). A backend
+@@ -250,8 +267,22 @@ public:
      int32_t FindNextBestPOI(const FVector& From, const std::vector<int32_t>& Visited) const;
      int32_t FindPOIAt(const FVector& Location) const;
      const FCoreAthenaBotLandingSpot* GetPOI(int32_t Index) const;
@@ -4010,7 +5392,7 @@ index 9cd7425..01f5649 100644
      // The battle bus while it flies (found when the aircraft phase starts).
      AActor* GetAircraft() const { return reinterpret_cast<AActor*>(CurrentAircraft.Get()); }
      // The aircraft a team's bots ride (AFortGameStateAthena::GetAircraftIndex's), DefaultAircraft where there is one bus.
-@@ -285,6 +310,11 @@ public:
+@@ -285,6 +316,11 @@ public:
      void RemoveFromAliveBots(FCoreAthenaBotController* Bot, AFortPlayerStateAthena* KillerState);
  
      static FCoreAIBotSkills SkillsForLevel(int32_t Level);
@@ -4022,16 +5404,42 @@ index 9cd7425..01f5649 100644
  
      // The assets the manager kept loaded for the match's bots (HoldAsset) are let go with it.
      ~FCoreAthenaBotManager();
-@@ -389,6 +419,8 @@ private:
+@@ -389,7 +425,23 @@ private:
      // game's check has them from RemoveFromAlivePlayers: StartEndGamePhase hands them to the winner's ClientNotifyWon.
      // Only as someone is taken out (OnPlayerRemoved, RemoveFromAliveBots), as the game runs its own.
      void CheckWinConditionLastManStanding(APawn* FinisherPawn, const UFortWeaponItemDefinition* FinishingWeapon, uint8_t DeathCause);
 +    // Fortnite-Offline-Server: the bots' "match stats" lines, once a match (the first time the match ends).
 +    void LogMatchStats();
      void RefreshEnemies(float Now);
++    // Fortnite-Offline-Server: Zero Build has no way out of a hole (Epic's Zero Build mantles; 3.6 can't). A player stuck
++    // in one (8 s within 6 m, two jumps, open sky above, walls on 6 of 8 sides) is taken up by a "rift": 100 m up, skydiving.
++    struct FPitWatch
++    {
++        FVector Anchor;
++        float Since = 0.0f;
++        int32_t Jumps = 0;
++        bool bWasRising = false;
++        float NextRift = 0.0f;
++        float LastSeen = 0.0f;
++        float Vitals = 0.0f;
++    };
++    std::unordered_map<const void*, FPitWatch> PitWatches;
++    void ZeroBuildRift(AFortPawn* Pawn, float Now);
      void RefreshLoot(float Now);
      void GatherContainers();
-@@ -427,6 +459,8 @@ private:
+     // The landing spots (at the bus), the bus's path (its location sampled while it flies), and each bot's spot and
+@@ -414,6 +466,10 @@ private:
+     // The players whose fill choice a warmup answer has given (SetFillAnswered).
+     std::set<std::wstring> FillAnsweredAccounts;
+     std::vector<std::unique_ptr<FCoreAthenaBotController>> PlayerBots;
++    // FindBot's index: each bot's pawn, player state and controller (RebuildBotIndex, once a frame).
++    mutable std::unordered_map<const UObject*, FCoreAthenaBotController*> BotIndex;
++    mutable std::unordered_set<const UObject*> NotBots;
++    void RebuildBotIndex();
+     int32_t NextBotIndex = 0;
+     // This match's shuffled order of the name list.
+     std::vector<int32_t> NameOrder;
+@@ -427,6 +483,8 @@ private:
      uint8_t LastPhase = 0xFF;
      bool bAircraftStarted = false;
      bool bMatchEnded = false;
@@ -4040,7 +5448,7 @@ index 9cd7425..01f5649 100644
      bool bLoggedKillTags = false;
      bool bWarnedNative = false;
      bool bWarnedUnsupported = false;
-@@ -468,6 +502,10 @@ private:
+@@ -468,6 +526,10 @@ private:
      bool bBotMatchStarted = false;
      bool bBotMatchAircraftStarted = false;
      std::vector<TWeakObjectPtr<AFortPawn>> EnemyPawns;

@@ -97,6 +97,8 @@ if (s.warmup_seconds != null) {
 } else {
   backendSettings.warmupSeconds = null;
 }
+// Zero Build, a mode of its own: nobody builds (players or bots) and the bots gather no materials (CoreV2's own build).
+backendSettings.zeroBuild = s.zero_build === true;
 fs.writeFileSync(backendSettingsFile, JSON.stringify(backendSettings, null, 2));
 
 process.env.FORTNITE_PS4_ACCOUNT = s.psn_account;

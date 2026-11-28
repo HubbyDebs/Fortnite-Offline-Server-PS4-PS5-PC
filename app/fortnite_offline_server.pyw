@@ -549,6 +549,8 @@ class State:
             s["bots"] = bots
         if "lan" in changes:
             s["lan"] = bool(changes["lan"])
+        if "zero_build" in changes:
+            s["zero_build"] = bool(changes["zero_build"])
         fov_changed = False
         if "ps4_stretched_fov" in changes:
             s["ps4_stretched_fov"] = bool(changes["ps4_stretched_fov"])
@@ -651,6 +653,7 @@ class State:
             "signins": self.signins,
             "pc_ip": pc_ip,
             "settings": {"bots": s.get("bots", {}), "unlock_all": s.get("unlock_all", []), "lan": s.get("lan", False),
+                         "zero_build": bool(s.get("zero_build", False)),
                          "port": s.get("port", 5595),
                          "ps4_stretched_fov": bool(s.get("ps4_stretched_fov", False)),
                          "ps4_fov_mode": s.get("ps4_fov_mode") if s.get("ps4_fov_mode") in ECHO_FOV_MODES else "1440x1080"},

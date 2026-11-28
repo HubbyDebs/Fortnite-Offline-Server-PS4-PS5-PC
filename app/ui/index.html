@@ -1281,6 +1281,7 @@ input[type=range]:hover::-webkit-slider-thumb {
           </div>
           <div class="skill-row">
             <label class="switch" title="Every bot gets its own skill tier and play style: looters, rushers, builders, campers"><input type="checkbox" id="mixed"><i></i>Mixed personalities</label>
+            <label class="switch" title="A mode of its own: nobody builds, you or the bots, and the bots gather no materials"><input type="checkbox" id="zeroBuild"><i></i>Zero Build</label>
             <button class="link" id="openTraits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Customize traits</button>
           </div>
           <div class="notice" id="notice"><span>Saved · applies after a restart</span><button id="apply">Restart now</button></div>
@@ -1482,6 +1483,7 @@ function drawBots() {
   $("vFights").innerHTML = b.fight_chance + "<small>%</small>";
   $("totalPlayers").textContent = (b.count + 1) + " players";
   $("mixed").checked = !!b.mixed;
+  $("zeroBuild").checked = !!settings.zero_build;
   const t = currentTraits();
   const values = TRAITS.map((k) => t[k]);
   const same = values.every((v) => v === values[0]);
@@ -1533,6 +1535,11 @@ function changeBots(changes) {
 $("count").oninput = (e) => changeBots({ count: +e.target.value });
 $("fights").oninput = (e) => changeBots({ fight_chance: +e.target.value });
 $("mixed").onchange = (e) => changeBots({ mixed: e.target.checked });
+$("zeroBuild").onchange = async (e) => {
+  settings.zero_build = e.target.checked;
+  try { await api("/api/settings", { zero_build: settings.zero_build }); } catch (err) { toast(err.message, true); }
+  needsRestart();
+};
 document.querySelectorAll("#skillPresets .preset").forEach((p) => p.onclick = () => {
   const [value, level] = SKILLS[p.dataset.s];
   changeBots({ traits: uniform(value), level });
